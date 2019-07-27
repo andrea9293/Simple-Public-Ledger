@@ -18,7 +18,7 @@ int main( int argc, const char* argv[]){
 
     int sd, sd1;
     struct sockaddr_in address;
-    char * buf = (char *) malloc (8 *sizeof(char));
+    //char * buf = (char *) malloc (8 *sizeof(char));
    
     
     address.sin_family = AF_INET;
@@ -26,6 +26,7 @@ int main( int argc, const char* argv[]){
     inet_pton(AF_INET, "127.0.0.1", &address.sin_addr); // TODO METTERE L'IP PASSATO DALLA RIGA DI COMANDO
     int exitCondition = 1;
     while (exitCondition == 1){
+        char * buf = (char *) malloc (128 *sizeof(char));
         sd = socket(AF_INET, SOCK_STREAM, 0);//socket tcp tramite stream di dati, connection-oriented
         connect(sd, (struct sockaddr *)&address, sizeof(address));
         
@@ -38,6 +39,7 @@ int main( int argc, const char* argv[]){
             exitCondition = 0;
             //break;
         }
+        free(buf);
     }
     
     close(sd);// rende il servizio non raggiungibile

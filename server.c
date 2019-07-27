@@ -10,7 +10,7 @@
 #include <arpa/inet.h>
 
 struct Node* storeLocal(struct Node* nextNode, int key, int value);
-void printList(struct Node* n);
+int printList(struct Node* n);
 struct Node* searchLocal(struct Node* head, int key);
 struct Node* initList(int key, int value);
 enum functions  getInvokedCommand(char* command);
@@ -18,6 +18,7 @@ void handler (int sig);
 void runServer(int port);
 int store(int x, int y);
 char *intToString(int a);
+int executeCommands(char * buf);
 
 int sd, sd1;
 
@@ -30,7 +31,6 @@ enum functions {
 	COMMANDO_NOT_FOUND
 };
 
-// A linked list node
 struct Node {
 	int key;
 	int value;
@@ -63,8 +63,6 @@ void runServer(int port){
 	struct sockaddr_in address;
 	struct sockaddr_in claddress;
 	socklen_t dimaddcl = sizeof(claddress);
-	char * buf = (char *) malloc (128 *sizeof(char));
-	char * sup = (char *) malloc (8 *sizeof(char));
 
 	address.sin_family = AF_INET;
 	address.sin_port = htons(port);
@@ -80,8 +78,10 @@ void runServer(int port){
 
 	write(STDOUT_FILENO, "listen\n", sizeof("listen\n"));
 
-	int exitCondition = 0;
+	int exitCondition = 1;
 	while (exitCondition == 1) {
+		char * buf = (char *) malloc (128 *sizeof(char));
+		char * sup = (char *) malloc (8 *sizeof(char));
 		sd1 = accept(sd, (struct sockaddr *) NULL, NULL);// estrae una richieta di connessione
 		if (sd1>1) {
 			write(STDOUT_FILENO, "accepted\n", sizeof("accepted\n"));
@@ -93,40 +93,12 @@ void runServer(int port){
 				write(STDOUT_FILENO, sup, strlen(sup));
 				write(STDOUT_FILENO, ": ", sizeof(": "));
 				write(STDOUT_FILENO, buf, r *sizeof(char));
-				int isSuccessInt = 0;
-
-				switch (getInvokedCommand(buf)) {
-				case STORE:
-					isSuccessInt = store(0, 0);
-					char *isSuccessString;
-					if (isSuccessInt == 1) {
-						isSuccessString = "SUCCESS";
-					}else{
-						isSuccessString = "ERROR";
-					}
-					write(STDOUT_FILENO, isSuccessString, strlen(isSuccessString));
-					break;
-				case LIST: // TODO IMPLEMENTARE LA VERA FUNZIONE LIST
-					printList(head);
-					break;
-				case SEARCH: // TODO IMPLEMENTARE LA VERA FUNZIONE SEARCH
-					if(searchLocal(head, 5) != NULL) {
-						write(STDOUT_FILENO, "trovato il 5\n\n", sizeof("trovato il 5\n\n"));
-					}else{
-						write(STDOUT_FILENO, "non trovato il 5\n\n", sizeof("non trovato il 5\n\n"));
-					}
-					break;
-				case EXIT: // TODO PERCHÉ NON CI VA MAI?
-					close(sd1);// chiude la connessione
-					exitCondition = 1;
-					break;
-				case CORRUPT: // TODO IMPLEMENTARE LA VERA FUNZIONE CORRUPT
-					break;
-				case COMMANDO_NOT_FOUND:
-					write(STDOUT_FILENO, "Command not found", sizeof("Command not found"));
-				}
+				exitCondition = executeCommands(buf);
 				write(STDOUT_FILENO, "\n\n", sizeof("\n\n"));
 			}
+
+			free(buf);
+			free(sup);
 
 		}
 		close(sd1);// chiude la connessione
@@ -135,6 +107,45 @@ void runServer(int port){
 	close(sd);// rende il servizio non raggiungibile
 	exit(1);
 
+}
+
+int executeCommands(char * buf){
+	int isSuccessInt = 0;
+	switch (getInvokedCommand(buf)) {
+		case STORE:
+			isSuccessInt = store(0, 0);
+			char *isSuccessString;
+			if (isSuccessInt == 1) {
+				isSuccessString = "SUCCESS";
+			}else{
+				isSuccessString = "ERROR";
+			}
+			write(STDOUT_FILENO, isSuccessString, strlen(isSuccessString));
+			break;
+		case LIST:                         // TODO IMPLEMENTARE LA VERA FUNZIONE LIST
+			isSuccessInt = printList(head);
+			if (isSuccessInt == 0) {
+				write(STDOUT_FILENO, "There are no record", sizeof("There are no record"));
+			}
+			break;
+		case SEARCH:                       // TODO IMPLEMENTARE LA VERA FUNZIONE SEARCH
+			if(searchLocal(head, 5) != NULL) {
+				write(STDOUT_FILENO, "trovato il 5\n\n", sizeof("trovato il 5\n\n"));
+			}else{
+				write(STDOUT_FILENO, "non trovato il 5\n\n", sizeof("non trovato il 5\n\n"));
+			}
+			break;
+		case EXIT:                         // TODO PERCHÉ NON CI VA MAI?
+			close(sd1); // chiude la connessione
+			return 0;
+			break;
+		case CORRUPT:                      // TODO IMPLEMENTARE LA VERA FUNZIONE CORRUPT
+			break;
+		case COMMANDO_NOT_FOUND:
+			write(STDOUT_FILENO, "Command not found", sizeof("Command not found"));
+			break;
+	}
+	return 1;
 }
 
 char *intToString(int a){
@@ -197,7 +208,10 @@ struct Node* storeLocal(struct Node* nextNode, int key, int value){
 	}
 }
 
-void printList(struct Node* n) {
+int printList(struct Node* n) {
+	if (n == NULL){
+		return 0;
+	}
 	while (n != NULL) {
 		char *key = intToString(n->key);
 		char *value = intToString(n->value);
@@ -206,6 +220,7 @@ void printList(struct Node* n) {
 		write(STDOUT_FILENO, value, sizeof(value));
 		n = n->next;
 	}
+	return 1;
 }
 
 struct Node* searchLocal(struct Node* head, int key){
