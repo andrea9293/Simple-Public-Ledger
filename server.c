@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
+#include <fcntl.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <sys/types.h>
@@ -9,6 +10,7 @@
 #include <signal.h>
 #include <arpa/inet.h>
 
+void readConfigFile(int);
 struct Node* storeLocal(struct Node* nextNode, int key, int value);
 int printList(struct Node* n);
 struct Node* searchLocal(struct Node* head, int key);
@@ -37,25 +39,74 @@ struct Node {
 	struct Node* next;
 };
 
+struct Server {//?Ho pensato che creare una lista di server fosse la cosa più sensata
+	struct sockaddr_in address;
+	struct Server* next;
+};
+
 struct Node* head;
+struct Server* serverListHead = NULL;
 int isEmptyList = 1;
 
 int main( int argc, const char* argv[]){
+	int configFileDescriptor;
 
-	if (argc == 1) {
-		write(STDOUT_FILENO, "inserire la porta e riprovare\n", sizeof("inserire la porta e riprovare\n"));
+	//controllo sul numero di input
+	if (argc < 3) {
+		write(STDOUT_FILENO, "Necessari file config,  ip e porta per l'esecuzione\n", sizeof("Necessari file config,  ip e porta per l'esecuzione\n"));
 		return 0;
 	}
+
+	configFileDescriptor = open(argv[1], O_RDONLY);//apertura del file di config
+	
+	readConfigFile(configFileDescriptor);//legge gli address dal file config
+
+
+
 	int port = atoi(argv[1]);
-	write(STDOUT_FILENO, argv[1], sizeof(char)); // TODO prende solo il primo numero... boh
+	write(STDOUT_FILENO, argv[1], sizeof(int)); //Prendeva solo il primo numero perché scriveva un carattere solo
 	write(STDOUT_FILENO, "\n\n", sizeof("\n\n"));
 	int isEmptyList = 1;
 	head = NULL;
 
 	//TODO decommentare quando si implementeranno i server concorrenti
-	//runServer(port);
+	//runServer(port); //!I server concorrenti sono più lanci del file, non più socket nello stesso processo
 	runServer(5200);
 	return 0;
+
+}
+
+//funzione che legge il file di config e crea una lista di server
+//!NOT WORKING/NOT TESTED
+//?strtok sputtana tutto il dio
+//?strncpy pure
+//entrambi è come se cambiassero il buffer di base
+void readConfigFile(int fileDescriptor){
+	char* buffer = (char*) malloc (64 * sizeof(char *));
+
+	char* add = (char*) malloc (64 * sizeof(char *));
+	char* porta = (char*) malloc (64 * sizeof(char *));
+	char delim[] = ":";
+	int charead;
+	long port;
+	struct Server* lastServer = NULL;
+	serverListHead = (struct Server*) malloc (sizeof(struct Server*));
+
+	while((charead = read(fileDescriptor, buffer, sizeof(buffer))) > 0){
+		write(STDOUT_FILENO, buffer, charead);
+		
+
+		serverListHead = (struct Server*) malloc (sizeof(struct Server*));
+		serverListHead->address.sin_family = AF_INET;
+		//inet_pton(AF_INET, (add=strtok(buffer, ":")), &serverListHead->address.sin_addr);
+		//port = atoi((porta =strtok(buffer, ":")));//argv[2] è sempre la porta
+    	serverListHead->address.sin_port = htons(port);
+		if(lastServer != NULL){
+			lastServer->next = serverListHead;
+		}
+		lastServer=serverListHead;
+	
+	}
 
 }
 
@@ -139,7 +190,10 @@ int executeCommands(char * buf){
 			close(sd1); // chiude la connessione
 			return 0;
 			break;
-		case CORRUPT:                      // TODO IMPLEMENTARE LA VERA FUNZIONE CORRUPT
+		case CORRUPT:   
+			// TODO IMPLEMENTARE LA VERA FUNZIONE CORRUPT
+			write(STDOUT_FILENO, "corrupt", sizeof("corrupt"));
+			write(sd1, "corrato", sizeof("corrato"));//!ho scritto una cacata per testare
 			break;
 		case COMMANDO_NOT_FOUND:
 			write(STDOUT_FILENO, "Command not found", sizeof("Command not found"));
@@ -147,7 +201,7 @@ int executeCommands(char * buf){
 	}
 	return 1;
 }
-
+//TODO non vengono mai liberate le stringhe. Eventualmente va tolta
 char *intToString(int a){
 	char *resStr =  (char *) malloc(sizeof(char) * 20);
 	sprintf(resStr, "%d", a);
