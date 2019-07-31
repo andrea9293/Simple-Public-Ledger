@@ -9,8 +9,12 @@
 #include <netinet/in.h>
 #include <signal.h>
 #include <arpa/inet.h>
+#include <pthread.h>
 
-void readConfigFile(int);
+
+void readConfigFile(int, char*);//Legge il config e salva gli indirizzi in una lista
+void createConnection();
+void *connectionToServer(void *);//apre le connesisoni
 struct Node* storeLocal(struct Node* nextNode, int key, int value);
 int printList(struct Node* n);
 struct Node* searchLocal(struct Node* head, int key);
@@ -42,6 +46,7 @@ struct Node {
 struct Server {//?Ho pensato che creare una lista di server fosse la cosa più sensata
 	struct sockaddr_in address;
 	struct Server* next;
+	int socketDescriptor;
 };
 
 struct Node* head;
@@ -59,7 +64,7 @@ int main( int argc, const char* argv[]){
 
 	configFileDescriptor = open(argv[1], O_RDONLY);//apertura del file di config
 	
-	readConfigFile(configFileDescriptor);//legge gli address dal file config
+	readConfigFile(configFileDescriptor,(char *) argv[2]);//legge gli address dal file config
 
 
 
@@ -71,20 +76,20 @@ int main( int argc, const char* argv[]){
 
 	//TODO decommentare quando si implementeranno i server concorrenti
 	//runServer(port); //!I server concorrenti sono più lanci del file, non più socket nello stesso processo
-	runServer(5200);
+	runServer(atoi(argv[2]));
+	createConnection();
 	return 0;
 
 }
 
 //funzione che legge il file di config e crea una lista di server
 //!NOT TESTED
-void readConfigFile(int fileDescriptor){
+void readConfigFile(int fileDescriptor, char* selfPort){
 	int bufferSize = 15;//dimensione del buffer di lettura. La dimensione di address:porta
 	char* buffer = (char*) malloc (bufferSize * sizeof(char *));//buffer in lettura
 	char* add = (char*) malloc (bufferSize * sizeof(char *));//stringa di supporto per salvare l'add
 	char* porta = (char*) malloc (bufferSize * sizeof(char *));//stringa di supporto per salvare la porta
 	const char delim[2] = ":";//delimitatore per lo strtok
-	int charead;
 	long port; //versione long del numero di porta da assegnare all'elemento della lista
 	struct Server* currentServer = serverListHead; //per scorrere la lista
 	struct Server* lastServer = NULL; //per salvare il server precedente
@@ -93,28 +98,58 @@ void readConfigFile(int fileDescriptor){
    	while(read(fileDescriptor, buffer, bufferSize) > 0) { //finché vengono letti indirizzi
 		add = strtok(buffer, delim); //stringa prima del delimitatore
    		porta = strtok(NULL, delim); //stringa dopo il delimitatore
-		
-		write(STDOUT_FILENO, "creazione server ", sizeof("creazione server "));
-		write(STDOUT_FILENO, add, strlen(add));
-		write(STDOUT_FILENO, ":", sizeof(":"));
-		write(STDOUT_FILENO, porta, strlen(porta));
+		if (strncmp(porta, selfPort, 4) != 0){ //evita che il server salvi se stesso
+			write(STDOUT_FILENO, "creazione server ", sizeof("creazione server "));
+			write(STDOUT_FILENO, add, strlen(add));
+			write(STDOUT_FILENO, ":", sizeof(":"));
+			write(STDOUT_FILENO, porta, strlen(porta));		
 
-		currentServer = (struct Server *) malloc (sizeof(struct Server*));//allocazione dell'elemento della lista
-		currentServer->address.sin_family = AF_INET;//famiglia dell'address del socket
-		port = atoi(porta);//conversione della porta a long
-		currentServer->address.sin_port = htons(port);//assegnazione porta
-		inet_pton(AF_INET, add, &currentServer->address.sin_addr);//assegnazione address
+			currentServer = (struct Server *) malloc (sizeof(struct Server*));//allocazione dell'elemento della lista
+			currentServer->address.sin_family = AF_INET;//famiglia dell'address del socket
+			port = atoi(porta);//conversione della porta a long
+			currentServer->address.sin_port = htons(port);//assegnazione porta
+			inet_pton(AF_INET, add, &currentServer->address.sin_addr);//assegnazione address
+			
+			write(STDOUT_FILENO, "fine creazione server", sizeof("fine creazione server"));
+			write(STDOUT_FILENO, "\n", sizeof("\n"));
 
-		write(STDOUT_FILENO, "fine creazione server", sizeof("fine creazione server"));
-		write(STDOUT_FILENO, "\n", sizeof("\n"));
-
-		if(lastServer != NULL){ //l'head non ha predecessori
-			lastServer->next = currentServer; //assegnzione del corrente al next precedente
+			if(lastServer != NULL){ //l'head non ha predecessori
+				lastServer->next = currentServer; //assegnzione del corrente al next precedente
+			}
+			lastServer = currentServer; //salviamo il current come precedente
 		}
-		lastServer = currentServer; //salviamo il current come precedente
+		
    }
 	return;
 }
+
+void createConnection(){
+	struct Server *currentServer = serverListHead;
+	pthread_t threadId;
+	
+	while(currentServer != NULL){
+		if(pthread_create(&threadId, NULL, connectionToServer, currentServer) != 0){
+        	perror("errore thread");
+		} else {
+			pthread_join(threadId, NULL);
+		}
+	}
+}
+
+//apre le connesisoni con gli altri server
+void *connectionToServer(void *server){
+	int connectResult;
+	struct Server* currentServer = (struct Server *)server;
+	currentServer->socketDescriptor = socket(AF_INET, SOCK_STREAM, 0);//socket tcp tramite stream di dati, connection-oriented
+    connectResult = connect(currentServer->socketDescriptor, (struct sockaddr *)&currentServer->address, sizeof(currentServer->address)); //connessione
+	while(connectResult != 0){
+		write(STDOUT_FILENO, "connessione non riuscita, nuovo tentativo", sizeof("connessione non riuscita, nuovo tentativo"));
+		sleep(2);
+		connectResult = connect(currentServer->socketDescriptor, (struct sockaddr *)&currentServer->address, sizeof(currentServer->address)); //connessione
+	}
+
+}
+
 
 void runServer(int port){
 	struct sockaddr_in address;
