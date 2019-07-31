@@ -82,31 +82,27 @@ int main( int argc, const char* argv[]){
 //?strncpy pure
 //entrambi è come se cambiassero il buffer di base
 void readConfigFile(int fileDescriptor){
-	char* buffer = (char*) malloc (64 * sizeof(char *));
+	int bufferSize = 256;
+	char* buffer = (char*) malloc (bufferSize * sizeof(char *));
 
-	char* add = (char*) malloc (64 * sizeof(char *));
-	char* porta = (char*) malloc (64 * sizeof(char *));
-	char delim[] = ":";
+	char* add = (char*) malloc (bufferSize * sizeof(char *));
+	char* porta = (char*) malloc (bufferSize * sizeof(char *));
+	char delim[2] = ":";
 	int charead;
 	long port;
 	struct Server* lastServer = NULL;
-	serverListHead = (struct Server*) malloc (sizeof(struct Server*));
+	read(fileDescriptor, buffer, bufferSize);
+     printf("buff: %s\n", buffer); //!mannaggia la bucchina
 
-	while((charead = read(fileDescriptor, buffer, sizeof(buffer))) > 0){
-		write(STDOUT_FILENO, buffer, charead);
-		
-
-		serverListHead = (struct Server*) malloc (sizeof(struct Server*));
-		serverListHead->address.sin_family = AF_INET;
-		//inet_pton(AF_INET, (add=strtok(buffer, ":")), &serverListHead->address.sin_addr);
-		//port = atoi((porta =strtok(buffer, ":")));//argv[2] è sempre la porta
-    	serverListHead->address.sin_port = htons(port);
-		if(lastServer != NULL){
-			lastServer->next = serverListHead;
-		}
-		lastServer=serverListHead;
-	
-	}
+   /* get the first token */
+   add = strtok(buffer, delim);
+   
+   /* walk through other tokens */
+   while( add != NULL ) {
+     printf("add: %s", add);
+    
+      add = strtok(NULL, delim);
+   }
 
 }
 
