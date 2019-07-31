@@ -131,13 +131,14 @@ void createConnection(){
 	struct Server *currentServer = serverListHead;
 	pthread_t threadId;
 
-	write(STDOUT_FILENO, "Stabilimento delle connessioni", sizeof("Stabilimento delle connessioni"));
-	while(serverListHead != NULL){//finché vi sono server salvati
+	write(STDOUT_FILENO, "Stabilimento delle connessioni\n", sizeof("Stabilimento delle connessioni\n"));
+	while(currentServer != NULL){//finché vi sono server salvati
 		if(pthread_create(&threadId, NULL, connectionToServer, currentServer) != 0){//crea un thread
         	perror("errore thread");
 		} else {
 			pthread_join(threadId, NULL); //join del thread con quello padre.
 		}
+		
 		currentServer = currentServer->next;
 	}
 	write(STDOUT_FILENO, "Stabilite connessioni con tutti i server\n", sizeof("Stabilite connessioni con tutti i server\n"));
