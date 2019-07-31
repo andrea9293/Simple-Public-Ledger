@@ -77,33 +77,43 @@ int main( int argc, const char* argv[]){
 }
 
 //funzione che legge il file di config e crea una lista di server
-//!NOT WORKING/NOT TESTED
-//?strtok sputtana tutto il dio
-//?strncpy pure
-//entrambi è come se cambiassero il buffer di base
+//!NOT TESTED
 void readConfigFile(int fileDescriptor){
-	int bufferSize = 256;
-	char* buffer = (char*) malloc (bufferSize * sizeof(char *));
-
-	char* add = (char*) malloc (bufferSize * sizeof(char *));
-	char* porta = (char*) malloc (bufferSize * sizeof(char *));
-	char delim[2] = ":";
+	int bufferSize = 15;//dimensione del buffer di lettura. La dimensione di address:porta
+	char* buffer = (char*) malloc (bufferSize * sizeof(char *));//buffer in lettura
+	char* add = (char*) malloc (bufferSize * sizeof(char *));//stringa di supporto per salvare l'add
+	char* porta = (char*) malloc (bufferSize * sizeof(char *));//stringa di supporto per salvare la porta
+	const char delim[2] = ":";//delimitatore per lo strtok
 	int charead;
-	long port;
-	struct Server* lastServer = NULL;
-	read(fileDescriptor, buffer, bufferSize);
-     printf("buff: %s\n", buffer); //!mannaggia la bucchina
-
-   /* get the first token */
-   add = strtok(buffer, delim);
+	long port; //versione long del numero di porta da assegnare all'elemento della lista
+	struct Server* currentServer = serverListHead; //per scorrere la lista
+	struct Server* lastServer = NULL; //per salvare il server precedente
    
-   /* walk through other tokens */
-   while( add != NULL ) {
-     printf("add: %s", add);
-    
-      add = strtok(NULL, delim);
-   }
+   //lettura degli address e separazione in tokens
+   	while(read(fileDescriptor, buffer, bufferSize) > 0) { //finché vengono letti indirizzi
+		add = strtok(buffer, delim); //stringa prima del delimitatore
+   		porta = strtok(NULL, delim); //stringa dopo il delimitatore
+		
+		write(STDOUT_FILENO, "creazione server ", sizeof("creazione server "));
+		write(STDOUT_FILENO, add, strlen(add));
+		write(STDOUT_FILENO, ":", sizeof(":"));
+		write(STDOUT_FILENO, porta, strlen(porta));
 
+		currentServer = (struct Server *) malloc (sizeof(struct Server*));//allocazione dell'elemento della lista
+		currentServer->address.sin_family = AF_INET;//famiglia dell'address del socket
+		port = atoi(porta);//conversione della porta a long
+		currentServer->address.sin_port = htons(port);//assegnazione porta
+		inet_pton(AF_INET, add, &currentServer->address.sin_addr);//assegnazione address
+
+		write(STDOUT_FILENO, "fine creazione server", sizeof("fine creazione server"));
+		write(STDOUT_FILENO, "\n", sizeof("\n"));
+
+		if(lastServer != NULL){ //l'head non ha predecessori
+			lastServer->next = currentServer; //assegnzione del corrente al next precedente
+		}
+		lastServer = currentServer; //salviamo il current come precedente
+   }
+	return;
 }
 
 void runServer(int port){
