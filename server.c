@@ -15,6 +15,7 @@
 void readConfigFile(int, char*);//Legge il config e salva gli indirizzi in una lista
 void createConnection();
 void *connectionToServer(void *);//apre le connesisoni
+void *acceptConnection(void *);//accetta le connesisoni
 struct Node* storeLocal(struct Node* nextNode, int key, int value);
 int printList(struct Node* n);
 struct Node* searchLocal(struct Node* head, int key);
@@ -56,28 +57,27 @@ int isEmptyList = 1;
 int main( int argc, const char* argv[]){
 	int configFileDescriptor;
 
+	signal (SIGINT, handler); //assegnazione dell'handler
+
+	/*		STARTUP		*/
 	//controllo sul numero di input
 	if (argc < 3) {
 		write(STDOUT_FILENO, "Necessari file config,  ip e porta per l'esecuzione\n", sizeof("Necessari file config,  ip e porta per l'esecuzione\n"));
 		return 0;
 	}
-
 	configFileDescriptor = open(argv[1], O_RDONLY);//apertura del file di config
-	
 	readConfigFile(configFileDescriptor,(char *) argv[2]);//legge gli address dal file config
 
-
-
 	int port = atoi(argv[1]);
-	write(STDOUT_FILENO, argv[1], sizeof(int)); //Prendeva solo il primo numero perché scriveva un carattere solo
+	write(STDOUT_FILENO, argv[2], sizeof(int)); //Prendeva solo il primo numero perché scriveva un carattere solo
 	write(STDOUT_FILENO, "\n\n", sizeof("\n\n"));
 	int isEmptyList = 1;
 	head = NULL;
 
 	//TODO decommentare quando si implementeranno i server concorrenti
 	//runServer(port); //!I server concorrenti sono più lanci del file, non più socket nello stesso processo
-	runServer(atoi(argv[2]));
-	createConnection();
+	runServer(atoi(argv[2])); //attivazione del socket in ricezione
+	createConnection(); //creazione delle connessioni agli altri server
 	return 0;
 
 }
@@ -91,9 +91,12 @@ void readConfigFile(int fileDescriptor, char* selfPort){
 	char* porta = (char*) malloc (bufferSize * sizeof(char *));//stringa di supporto per salvare la porta
 	const char delim[2] = ":";//delimitatore per lo strtok
 	long port; //versione long del numero di porta da assegnare all'elemento della lista
-	struct Server* currentServer = serverListHead; //per scorrere la lista
+	struct Server* currentServer =  NULL; //per scorrere la lista
 	struct Server* lastServer = NULL; //per salvare il server precedente
-   
+	
+	serverListHead = (struct Server *) malloc (sizeof(struct Server*));//allocazione dell'elemento della lista
+	currentServer = serverListHead;
+
    //lettura degli address e separazione in tokens
    	while(read(fileDescriptor, buffer, bufferSize) > 0) { //finché vengono letti indirizzi
 		add = strtok(buffer, delim); //stringa prima del delimitatore
@@ -103,8 +106,8 @@ void readConfigFile(int fileDescriptor, char* selfPort){
 			write(STDOUT_FILENO, add, strlen(add));
 			write(STDOUT_FILENO, ":", sizeof(":"));
 			write(STDOUT_FILENO, porta, strlen(porta));		
-
-			currentServer = (struct Server *) malloc (sizeof(struct Server*));//allocazione dell'elemento della lista
+			
+			
 			currentServer->address.sin_family = AF_INET;//famiglia dell'address del socket
 			port = atoi(porta);//conversione della porta a long
 			currentServer->address.sin_port = htons(port);//assegnazione porta
@@ -117,50 +120,65 @@ void readConfigFile(int fileDescriptor, char* selfPort){
 				lastServer->next = currentServer; //assegnzione del corrente al next precedente
 			}
 			lastServer = currentServer; //salviamo il current come precedente
+			currentServer = (struct Server *) malloc (sizeof(struct Server*));//allocazione dell'elemento della lista
 		}
 		
    }
 	return;
 }
-
+//crea i thread per le connessioni
 void createConnection(){
 	struct Server *currentServer = serverListHead;
 	pthread_t threadId;
-	
-	while(currentServer != NULL){
-		if(pthread_create(&threadId, NULL, connectionToServer, currentServer) != 0){
+
+	write(STDOUT_FILENO, "Stabilimento delle connessioni", sizeof("Stabilimento delle connessioni"));
+	while(serverListHead != NULL){//finché vi sono server salvati
+		if(pthread_create(&threadId, NULL, connectionToServer, currentServer) != 0){//crea un thread
         	perror("errore thread");
 		} else {
-			pthread_join(threadId, NULL);
+			pthread_join(threadId, NULL); //join del thread con quello padre.
 		}
+		currentServer = currentServer->next;
 	}
+	write(STDOUT_FILENO, "Stabilite connessioni con tutti i server\n", sizeof("Stabilite connessioni con tutti i server\n"));
 }
 
 //apre le connesisoni con gli altri server
 void *connectionToServer(void *server){
-	int connectResult;
-	struct Server* currentServer = (struct Server *)server;
+	int connectResult; //utile al controllo errori sulle connessioni
+	struct Server* currentServer = (struct Server *)server; //cast del parametro passato
+	char* buffer = (char*) malloc (80 * sizeof(char *));//buffer in lettura
+
+
+	write(STDOUT_FILENO, "tentativo di connessione a:", sizeof("tentativo di connessione a:"));
+	inet_ntop(AF_INET, &(currentServer->address.sin_addr), buffer, INET_ADDRSTRLEN);
+	write(STDOUT_FILENO, buffer, strlen(buffer));
+	write(STDOUT_FILENO, ":", sizeof(":"));
+	sprintf(buffer, "%d", ntohs(currentServer->address.sin_port));
+	write(STDOUT_FILENO, buffer, strlen(buffer));
+	//connessione al socket assegnato in input
 	currentServer->socketDescriptor = socket(AF_INET, SOCK_STREAM, 0);//socket tcp tramite stream di dati, connection-oriented
     connectResult = connect(currentServer->socketDescriptor, (struct sockaddr *)&currentServer->address, sizeof(currentServer->address)); //connessione
-	while(connectResult != 0){
-		write(STDOUT_FILENO, "connessione non riuscita, nuovo tentativo", sizeof("connessione non riuscita, nuovo tentativo"));
-		sleep(2);
+	while(connectResult != 0){ //finché la connessione non è staiblita
+		write(STDOUT_FILENO, "\nconnessione non riuscita, nuovo tentativo", sizeof("\nconnessione non riuscita, nuovo tentativo"));
+		write(STDOUT_FILENO, "\n", sizeof("\n"));
+		sleep(10);
 		connectResult = connect(currentServer->socketDescriptor, (struct sockaddr *)&currentServer->address, sizeof(currentServer->address)); //connessione
 	}
+	write(STDOUT_FILENO, "\n", sizeof("\n"));
 
 }
 
-
+//! NOT PROPERLY TESTED
 void runServer(int port){
 	struct sockaddr_in address;
-	struct sockaddr_in claddress;
-	socklen_t dimaddcl = sizeof(claddress);
+	struct sockaddr_in claddress;//TODO cancellare
+	socklen_t dimaddcl = sizeof(claddress);//TODO cancellare
 
 	address.sin_family = AF_INET;
 	address.sin_port = htons(port);
 	address.sin_addr.s_addr = htonl(INADDR_ANY);
 
-	signal (SIGINT, handler);
 	sd = socket(AF_INET, SOCK_STREAM, 0);//socket TCP ipv4
 	if (bind(sd, (struct sockaddr *) &address, sizeof(address)) < 0) {//assegna l'address al socket
 		perror ("errore bind");
@@ -168,15 +186,21 @@ void runServer(int port){
 	}
 	listen(sd, 10); // rende il servizio raggiungibile
 
-	write(STDOUT_FILENO, "listen\n", sizeof("listen\n"));
+	write(STDOUT_FILENO, "listening...\n", sizeof("listening...\n"));
 
+	pthread_t threadId;
 	int exitCondition = 1;
-	while (exitCondition == 1) {
-		char * buf = (char *) malloc (128 *sizeof(char));
-		char * sup = (char *) malloc (8 *sizeof(char));
-		sd1 = accept(sd, (struct sockaddr *) NULL, NULL);// estrae una richieta di connessione
-		if (sd1>1) {
-			write(STDOUT_FILENO, "accepted\n", sizeof("accepted\n"));
+//	while (exitCondition == 1) {
+		//char * buf = (char *) malloc (128 *sizeof(char));
+		//char * sup = (char *) malloc (8 *sizeof(char));
+		if(pthread_create(&threadId, NULL, acceptConnection, NULL) != 0){//crea un thread
+			perror("errore thread");
+		} else {
+			write(STDOUT_FILENO, "thread creato\n", sizeof("thread creato\n"));
+		}
+		
+	
+			/* write(STDOUT_FILENO, "accepted\n", sizeof("accepted\n"));
 
 			int r = read (sd1, buf, sizeof(buf));
 			if (r>0) {
@@ -198,7 +222,44 @@ void runServer(int port){
 
 	close(sd);// rende il servizio non raggiungibile
 	exit(1);
+*/
+//	}
+}
+//accetta le connessioni in attesa
+void *acceptConnection(void *arg){
+	struct sockaddr_in claddress;
+	socklen_t dimaddcl = sizeof(claddress);
+	int exitCondition = 1;
+	char * buf = (char *) malloc (128 *sizeof(char));
+	char * sup = (char *) malloc (8 *sizeof(char));
 
+	sd1 = accept(sd, (struct sockaddr *) NULL, NULL);// estrae una richieta di connessione
+	if (sd1>1) { //in caso l'accettazione sia andata a buon fine
+		int add = getsockname(sd1, (struct sockaddr *)&claddress, &dimaddcl);
+		strcpy (sup, inet_ntoa(claddress.sin_addr));
+		write(STDOUT_FILENO, "Connessione accettata da: ", sizeof("connessione accettata da:"));
+		write(STDOUT_FILENO, sup, strlen(sup));
+		write(STDOUT_FILENO, ":", sizeof(":"));
+		sprintf(sup, "%d", ntohs(claddress.sin_port));
+		write(STDOUT_FILENO, sup, strlen(sup));
+		write(STDOUT_FILENO, "\n\n", sizeof("\n\n"));
+
+		//lettura dal socket
+		int r = read (sd1, buf, sizeof(buf));
+		if (r>0) {//in caso il socket non sia vuoto
+			write(STDOUT_FILENO, sup, strlen(sup));
+			write(STDOUT_FILENO, ": ", sizeof(": "));
+			write(STDOUT_FILENO, buf, r *sizeof(char));
+			exitCondition = executeCommands(buf);
+			write(STDOUT_FILENO, "\n\n", sizeof("\n\n"));
+		}
+
+		free(buf);
+		free(sup);
+
+	}
+	close(sd1);// chiude la connessione
+	
 }
 
 int executeCommands(char * buf){
