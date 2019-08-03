@@ -66,7 +66,7 @@ int main( int argc, const char* argv[]){
 		return 0;
 	}
 	configFileDescriptor = open(argv[1], O_RDONLY);//apertura del file di config
-	readConfigFile(configFileDescriptor,(char *) argv[2]);//legge gli address dal file config
+	//readConfigFile(configFileDescriptor,(char *) argv[2]);//legge gli address dal file config //! da decommentare!!!FIXME 
 
 	int port = atoi(argv[1]);
 	write(STDOUT_FILENO, argv[2], sizeof(int)); //Prendeva solo il primo numero perché scriveva un carattere solo
@@ -255,15 +255,48 @@ void *acceptConnection(void *arg){
 			write(STDOUT_FILENO, "\n\n", sizeof("\n\n"));
 
 			//lettura dal socket
-			int r = read (sd1, buf, sizeof(buf));
+			/*int r = read (sd1, buf, sizeof(buf));
 			if (r>0) {//in caso il socket non sia vuoto
 				write(STDOUT_FILENO, sup, strlen(sup));
 				write(STDOUT_FILENO, ": ", sizeof(": "));
 				write(STDOUT_FILENO, buf, r *sizeof(char));
+				write(STDOUT_FILENO, "\n\n", sizeof("\n\n"));
 				exitCondition = executeCommands(buf);
 				write(STDOUT_FILENO, "\n\n", sizeof("\n\n"));
-			}
+			}*/
 
+			//! tentativo di lettura START
+			int r = 1;
+			int endOfBuffer = 1;
+			
+			while (r>0 && endOfBuffer == 1)
+			{
+				char * tmpBuf = (char *) malloc (sizeof(char));
+				write(STDOUT_FILENO, "\nprova a leggere...\n", sizeof("\nprova a leggere...\n"));
+				r = read (sd1, tmpBuf, sizeof(char));
+				if (r>0) {//in caso il socket non sia vuoto
+					strcat(buf, tmpBuf);
+					write(STDOUT_FILENO, "letto:\n", sizeof("letto:\n"));
+					write(STDOUT_FILENO, tmpBuf, r *sizeof(char));
+					if (strcmp(tmpBuf, "^") == 0){
+						write(STDOUT_FILENO, "verificato\n", sizeof("verificato\n"));
+						endOfBuffer = 0;
+					}
+					write(STDOUT_FILENO, "\n\n", sizeof("\n\n"));
+				}
+				
+				write(STDOUT_FILENO, "\n\ncomando completo:\n", sizeof("\n\ncomando completo:\n"));
+				write(STDOUT_FILENO, buf, sizeof(buf));
+				write(STDOUT_FILENO, "\n", sizeof("\n"));
+				free(tmpBuf);
+			}
+			
+			write(STDOUT_FILENO, "comando completo finale:\n", sizeof("comando completo finale:\n"));
+			write(STDOUT_FILENO, buf, sizeof(buf));
+
+			//! tentativo di lettura END
+			exitCondition = executeCommands(buf);
+			
 			free(buf);
 			free(sup);
 
@@ -274,6 +307,7 @@ void *acceptConnection(void *arg){
 
 //ANCHOR executeCommands
 int executeCommands(char * buf){
+	write(STDOUT_FILENO, "@@@executeCommmands\n\n", sizeof("@@@executeCommmands\n\n"));
 	int isSuccessInt = 0;
 	switch (getInvokedCommand(buf)) {
 		case STORE:
@@ -340,6 +374,8 @@ int store(int x, int y){
 
 //ANCHOR getInvokedCommand
 enum functions getInvokedCommand(char* command){
+	write(STDOUT_FILENO, "@@@getInvokedCommand\n", sizeof("@@@getInvokedCommand\n"));
+	write(STDOUT_FILENO, command, sizeof(command));
 	if(strstr(command, "STORE")) {
 		return STORE;
 	}

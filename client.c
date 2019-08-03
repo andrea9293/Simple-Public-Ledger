@@ -111,7 +111,7 @@ int checkCorrectCommand(char* command){
 ?altrimenti dobbiamo vedere la connesisone in datagram
 */
 char* createMessage(int argc, const char* argv[] ){
-    char * buf = (char *) malloc (128 *sizeof(char)); 
+    char * buf = (char *) malloc (512 *sizeof(char)); 
     strcat(buf, argv[3]);
     write(STDOUT_FILENO, "inserito il comando\n", sizeof("inserito il comando\n"));
 
@@ -122,11 +122,16 @@ char* createMessage(int argc, const char* argv[] ){
 
     }
     else if(argc == 6){
+        strcat(buf, "-");
         strcat(buf, argv[4]);
         strcat(buf, "-");
+        
         strcat(buf, argv[5]);
         write(STDOUT_FILENO, "inserito il par2\n", sizeof("inserito il par1\n"));
 
     }
+    strcat(buf, "^");
+    write(STDOUT_FILENO, "COMANDO COSTRUITO:\n", sizeof("\n\n"));
+    write(STDOUT_FILENO, buf, sizeof(buf));
     return buf;
 }
