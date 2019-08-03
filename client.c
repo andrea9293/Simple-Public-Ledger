@@ -54,9 +54,10 @@ int main( int argc, const char* argv[]){
     sd = socket(AF_INET, SOCK_STREAM, 0);//socket tcp tramite stream di dati, connection-oriented
     connect(sd, (struct sockaddr *)&address, sizeof(address)); //connessione
     
-
     //Invio del messaggio al server    
     strcpy(message, createMessage(argc, argv));
+
+    write(STDOUT_FILENO, message, strlen(message));
 
     write(sd, message, strlen(message));
     charead = read(sd, message, sizeof(message));
@@ -134,6 +135,7 @@ char* createMessage(int argc, const char* argv[] ){
     int dim = strlen(buf) + strlen(messaggio); //sommo il numero di caratteri
     sprintf(messaggio, "%d", dim);//metto la somma in una stringa
     strcat(messaggio, buf);//concateno il resto del messaggio alla dimensione
+    strcat(messaggio, "\n");
 
     return messaggio;
 }

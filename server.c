@@ -66,7 +66,7 @@ int main( int argc, const char* argv[]){
 		return 0;
 	}
 	configFileDescriptor = open(argv[1], O_RDONLY);//apertura del file di config
-	//readConfigFile(configFileDescriptor,(char *) argv[2]);//legge gli address dal file config //! da decommentare!!!FIXME 
+	readConfigFile(configFileDescriptor,(char *) argv[2]);//legge gli address dal file config //! da decommentare!!!FIXME 
 
 	int port = atoi(argv[1]);
 	write(STDOUT_FILENO, argv[2], sizeof(int)); //Prendeva solo il primo numero perché scriveva un carattere solo
@@ -235,13 +235,16 @@ pthread_t runServer(int port){
 //ANCHOR acceptConnection
 //accetta le connessioni in attesa
 void *acceptConnection(void *arg){
+	char * messaggio = (char *) malloc( 128 * sizeof(char *));
+	char * buf = (char *) malloc( 128 * sizeof(char *));
+	char * sup = (char *) malloc (128 *sizeof(char));
 	struct sockaddr_in claddress;
 	socklen_t dimaddcl = sizeof(claddress);
 	int exitCondition = 1;
 	while (exitCondition == 1) {
-		char * buf = (char *) malloc (128 *sizeof(char));
-		char * sup = (char *) malloc (8 *sizeof(char));
-		write(STDOUT_FILENO, "listening...\n", sizeof("listening...\n"));
+		
+
+		
 
 		sd1 = accept(sd, (struct sockaddr *) NULL, NULL);// estrae una richieta di connessione
 		if (sd1>1) { //in caso l'accettazione sia andata a buon fine
@@ -252,52 +255,33 @@ void *acceptConnection(void *arg){
 			write(STDOUT_FILENO, ":", sizeof(":"));
 			sprintf(sup, "%d", ntohs(claddress.sin_port));
 			write(STDOUT_FILENO, sup, strlen(sup));
-			write(STDOUT_FILENO, "\n\n", sizeof("\n\n"));
-
-			//lettura dal socket
-			/*int r = read (sd1, buf, sizeof(buf));
-			if (r>0) {//in caso il socket non sia vuoto
-				write(STDOUT_FILENO, sup, strlen(sup));
-				write(STDOUT_FILENO, ": ", sizeof(": "));
-				write(STDOUT_FILENO, buf, r *sizeof(char));
-				write(STDOUT_FILENO, "\n\n", sizeof("\n\n"));
-				exitCondition = executeCommands(buf);
-				write(STDOUT_FILENO, "\n\n", sizeof("\n\n"));
-			}*/
+			write(STDOUT_FILENO, "\n", sizeof("\n"));
+			int r;
 
 			//! tentativo di lettura START
-			int r = 1;
-			int endOfBuffer = 1;
-			
-			while (r>0 && endOfBuffer == 1)
-			{
-				char * tmpBuf = (char *) malloc (sizeof(char));
-				write(STDOUT_FILENO, "\nprova a leggere...\n", sizeof("\nprova a leggere...\n"));
-				r = read (sd1, tmpBuf, sizeof(char));
-				if (r>0) {//in caso il socket non sia vuoto
-					strcat(buf, tmpBuf);
-					write(STDOUT_FILENO, "letto:\n", sizeof("letto:\n"));
-					write(STDOUT_FILENO, tmpBuf, r *sizeof(char));
-					if (strcmp(tmpBuf, "^") == 0){
-						write(STDOUT_FILENO, "verificato\n", sizeof("verificato\n"));
-						endOfBuffer = 0;
-					}
-					write(STDOUT_FILENO, "\n\n", sizeof("\n\n"));
-				}
-				
-				write(STDOUT_FILENO, "\n\ncomando completo:\n", sizeof("\n\ncomando completo:\n"));
-				write(STDOUT_FILENO, buf, sizeof(buf));
-				write(STDOUT_FILENO, "\n", sizeof("\n"));
-				free(tmpBuf);
+			r = read (sd1, buf, 128);
+			strcpy(messaggio, buf);
+			strcpy(sup, messaggio);
+			int size = atoi(strtok(sup, ":"));
+			write(STDOUT_FILENO, messaggio, size);
+			printf("\n\nsize %d, r %d\n\n", size, r);
+			if (size == (r-1)){
+				write(STDOUT_FILENO, "dimensione corretta", sizeof("dimensione corretta"));
+			} else if( size < r-1){
+				write(STDOUT_FILENO, "letto troppo", sizeof("letto troppo"));
+
+			} else {
+				write(STDOUT_FILENO, "letto poco", sizeof("letto poco"));
 			}
+
 			
-			write(STDOUT_FILENO, "comando completo finale:\n", sizeof("comando completo finale:\n"));
-			write(STDOUT_FILENO, buf, sizeof(buf));
+			
+			
 
 			//! tentativo di lettura END
-			exitCondition = executeCommands(buf);
-			
-			free(buf);
+			exitCondition = executeCommands(messaggio);
+			//free(buf);
+			free(messaggio);
 			free(sup);
 
 		}
