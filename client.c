@@ -103,35 +103,37 @@ int checkCorrectCommand(char* command){
 }
 
 /* 
-?ho pensato di creare un singolo messaggio in cui concateniamo comando e param
-?ho inserito "-" come token.
-?L'arternativa è mandare più messaggi al server
-?molto probabilmente converrà comunque mandare più messaggi
-?per il problema del messaggio tcp/ip
-?altrimenti dobbiamo vedere la connesisone in datagram
+NOTE il protocollo funziona con un messaggio strutturato come segue
+<size>:<sender>:<command-par1-par2>
+ad esempio
+8:c:LIST
 */
 char* createMessage(int argc, const char* argv[] ){
     char * buf = (char *) malloc (512 *sizeof(char)); 
+    char * messaggio = (char *) malloc (512 *sizeof(char));
+    
+    write(STDOUT_FILENO, "creazione del messaggio\n", "creazione del messaggio\n");
+
+    //inserisce nel messaggio il segnale del sender ed il comando
+    strcat(buf, ":c:");
     strcat(buf, argv[3]);
-    write(STDOUT_FILENO, "inserito il comando\n", sizeof("inserito il comando\n"));
 
-    if (argc == 5){
-        write(STDOUT_FILENO, "entrato\n", sizeof("entrato\n"));
+    if (argc == 5){ //inserisce un parametro in caso ce ne sia solo uno
         strcat(buf, "-");
         strcat(buf, argv[4]);
 
     }
-    else if(argc == 6){
+    else if(argc == 6){ //inserisce due parametri altrimenti
         strcat(buf, "-");
         strcat(buf, argv[4]);
-        strcat(buf, "-");
-        
+        strcat(buf, "-");      
         strcat(buf, argv[5]);
-        write(STDOUT_FILENO, "inserito il par2\n", sizeof("inserito il par1\n"));
-
     }
-    strcat(buf, "^");
-    write(STDOUT_FILENO, "COMANDO COSTRUITO:\n", sizeof("\n\n"));
-    write(STDOUT_FILENO, buf, sizeof(buf));
-    return buf;
+    //calcolo della dimensione del messaggio
+    sprintf(messaggio, "%ld", strlen(buf)); //salvo la dimensione del restante messagigo in una stringa
+    int dim = strlen(buf) + strlen(messaggio); //sommo il numero di caratteri
+    sprintf(messaggio, "%d", dim);//metto la somma in una stringa
+    strcat(messaggio, buf);//concateno il resto del messaggio alla dimensione
+    
+    return messaggio;
 }
