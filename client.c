@@ -49,13 +49,14 @@ int main( int argc, const char* argv[]){
     long port = atoi(argv[2]);//argv[2] è sempre la porta
     address.sin_port = htons(port);
     inet_pton(AF_INET, argv[1], &address.sin_addr); // argv[1] è sempre l'ip
-        
+    write(STDOUT_FILENO, "Tentativo di conessione al server\n", sizeof("Tentativo di conessione al server\n"));
+    
     sd = socket(AF_INET, SOCK_STREAM, 0);//socket tcp tramite stream di dati, connection-oriented
     connect(sd, (struct sockaddr *)&address, sizeof(address)); //connessione
+    
 
     //Invio del messaggio al server    
     strcpy(message, createMessage(argc, argv));
-    write(STDOUT_FILENO, message, strlen(message));
 
     write(sd, message, strlen(message));
     charead = read(sd, message, sizeof(message));
@@ -112,14 +113,20 @@ int checkCorrectCommand(char* command){
 char* createMessage(int argc, const char* argv[] ){
     char * buf = (char *) malloc (128 *sizeof(char)); 
     strcat(buf, argv[3]);
-    strcat(buf, "-");
-    if (argc == 4){
+    write(STDOUT_FILENO, "inserito il comando\n", sizeof("inserito il comando\n"));
+
+    if (argc == 5){
+        write(STDOUT_FILENO, "entrato\n", sizeof("entrato\n"));
+        strcat(buf, "-");
         strcat(buf, argv[4]);
+
     }
-    else {
+    else if(argc == 6){
         strcat(buf, argv[4]);
         strcat(buf, "-");
         strcat(buf, argv[5]);
+        write(STDOUT_FILENO, "inserito il par2\n", sizeof("inserito il par1\n"));
+
     }
     return buf;
 }

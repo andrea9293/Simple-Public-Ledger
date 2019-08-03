@@ -11,7 +11,7 @@
 #include <arpa/inet.h>
 #include <pthread.h>
 
-
+//ANCHOR firma funzioni
 void readConfigFile(int, char*);//Legge il config e salva gli indirizzi in una lista
 void createConnection();
 void *connectionToServer(void *);//apre le connesisoni
@@ -22,13 +22,13 @@ struct Node* searchLocal(struct Node* head, int key);
 struct Node* initList(int key, int value);
 enum functions  getInvokedCommand(char* command);
 void handler (int sig);
-void runServer(int port);
+pthread_t runServer(int port);
 int store(int x, int y);
 char *intToString(int a);
 int executeCommands(char * buf);
 
 int sd, sd1;
-
+//ANCHOR strutture
 enum functions {
 	STORE,
 	SEARCH,
@@ -53,10 +53,10 @@ struct Server {//?Ho pensato che creare una lista di server fosse la cosa più s
 struct Node* head;
 struct Server* serverListHead = NULL;
 int isEmptyList = 1;
-
+//ANCHOR main
 int main( int argc, const char* argv[]){
 	int configFileDescriptor;
-
+	pthread_t serverThreadId;
 	signal (SIGINT, handler); //assegnazione dell'handler
 
 	/*		STARTUP		*/
@@ -76,14 +76,16 @@ int main( int argc, const char* argv[]){
 
 	//TODO decommentare quando si implementeranno i server concorrenti
 	//runServer(port); //!I server concorrenti sono più lanci del file, non più socket nello stesso processo
-	runServer(atoi(argv[2])); //attivazione del socket in ricezione
+	serverThreadId = runServer(atoi(argv[2])); //attivazione del socket in ricezione
 	createConnection(); //creazione delle connessioni agli altri server
+	pthread_join(serverThreadId, NULL); //attende la fine del thread server
 	return 0;
 
 }
 
 //funzione che legge il file di config e crea una lista di server
 //!NOT TESTED
+//ANCHOR readConfigFile
 void readConfigFile(int fileDescriptor, char* selfPort){
 	int bufferSize = 15;//dimensione del buffer di lettura. La dimensione di address:porta
 	char* buffer = (char*) malloc (bufferSize * sizeof(char *));//buffer in lettura
@@ -126,6 +128,7 @@ void readConfigFile(int fileDescriptor, char* selfPort){
    }
 	return;
 }
+//ANCHOR createConnection
 //crea i thread per le connessioni
 void createConnection(){
 	struct Server *currentServer = serverListHead;
@@ -144,6 +147,7 @@ void createConnection(){
 	write(STDOUT_FILENO, "Stabilite connessioni con tutti i server\n", sizeof("Stabilite connessioni con tutti i server\n"));
 }
 
+//ANCHOR connectionToServer
 //apre le connesisoni con gli altri server
 void *connectionToServer(void *server){
 	int connectResult; //utile al controllo errori sulle connessioni
@@ -170,8 +174,9 @@ void *connectionToServer(void *server){
 
 }
 
+//ANCHOR runServer
 //! NOT PROPERLY TESTED
-void runServer(int port){
+pthread_t runServer(int port){
 	struct sockaddr_in address;
 	struct sockaddr_in claddress;//TODO cancellare
 	socklen_t dimaddcl = sizeof(claddress);//TODO cancellare
@@ -185,7 +190,7 @@ void runServer(int port){
 		perror ("errore bind");
 		exit(1);
 	}
-	listen(sd, 10); // rende il servizio raggiungibile
+	listen(sd, 15); // rende il servizio raggiungibile
 
 	write(STDOUT_FILENO, "listening...\n", sizeof("listening...\n"));
 
@@ -198,6 +203,7 @@ void runServer(int port){
 			perror("errore thread");
 		} else {
 			write(STDOUT_FILENO, "thread creato\n", sizeof("thread creato\n"));
+			return threadId;
 		}
 		
 	
@@ -226,43 +232,47 @@ void runServer(int port){
 */
 //	}
 }
+//ANCHOR acceptConnection
 //accetta le connessioni in attesa
 void *acceptConnection(void *arg){
 	struct sockaddr_in claddress;
 	socklen_t dimaddcl = sizeof(claddress);
 	int exitCondition = 1;
-	char * buf = (char *) malloc (128 *sizeof(char));
-	char * sup = (char *) malloc (8 *sizeof(char));
+	while (exitCondition == 1) {
+		char * buf = (char *) malloc (128 *sizeof(char));
+		char * sup = (char *) malloc (8 *sizeof(char));
+		write(STDOUT_FILENO, "listening...\n", sizeof("listening...\n"));
 
-	sd1 = accept(sd, (struct sockaddr *) NULL, NULL);// estrae una richieta di connessione
-	if (sd1>1) { //in caso l'accettazione sia andata a buon fine
-		int add = getsockname(sd1, (struct sockaddr *)&claddress, &dimaddcl);
-		strcpy (sup, inet_ntoa(claddress.sin_addr));
-		write(STDOUT_FILENO, "Connessione accettata da: ", sizeof("connessione accettata da:"));
-		write(STDOUT_FILENO, sup, strlen(sup));
-		write(STDOUT_FILENO, ":", sizeof(":"));
-		sprintf(sup, "%d", ntohs(claddress.sin_port));
-		write(STDOUT_FILENO, sup, strlen(sup));
-		write(STDOUT_FILENO, "\n\n", sizeof("\n\n"));
-
-		//lettura dal socket
-		int r = read (sd1, buf, sizeof(buf));
-		if (r>0) {//in caso il socket non sia vuoto
+		sd1 = accept(sd, (struct sockaddr *) NULL, NULL);// estrae una richieta di connessione
+		if (sd1>1) { //in caso l'accettazione sia andata a buon fine
+			int add = getsockname(sd1, (struct sockaddr *)&claddress, &dimaddcl);
+			strcpy (sup, inet_ntoa(claddress.sin_addr));
+			write(STDOUT_FILENO, "Connessione accettata da: ", sizeof("connessione accettata da:"));
 			write(STDOUT_FILENO, sup, strlen(sup));
-			write(STDOUT_FILENO, ": ", sizeof(": "));
-			write(STDOUT_FILENO, buf, r *sizeof(char));
-			exitCondition = executeCommands(buf);
+			write(STDOUT_FILENO, ":", sizeof(":"));
+			sprintf(sup, "%d", ntohs(claddress.sin_port));
+			write(STDOUT_FILENO, sup, strlen(sup));
 			write(STDOUT_FILENO, "\n\n", sizeof("\n\n"));
+
+			//lettura dal socket
+			int r = read (sd1, buf, sizeof(buf));
+			if (r>0) {//in caso il socket non sia vuoto
+				write(STDOUT_FILENO, sup, strlen(sup));
+				write(STDOUT_FILENO, ": ", sizeof(": "));
+				write(STDOUT_FILENO, buf, r *sizeof(char));
+				exitCondition = executeCommands(buf);
+				write(STDOUT_FILENO, "\n\n", sizeof("\n\n"));
+			}
+
+			free(buf);
+			free(sup);
+
 		}
-
-		free(buf);
-		free(sup);
-
+		close(sd1);// chiude la connessione
 	}
-	close(sd1);// chiude la connessione
-	
 }
 
+//ANCHOR executeCommands
 int executeCommands(char * buf){
 	int isSuccessInt = 0;
 	switch (getInvokedCommand(buf)) {
@@ -304,6 +314,7 @@ int executeCommands(char * buf){
 	}
 	return 1;
 }
+//ANCHOR intToString
 //TODO non vengono mai liberate le stringhe. Eventualmente va tolta
 char *intToString(int a){
 	char *resStr =  (char *) malloc(sizeof(char) * 20);
@@ -311,6 +322,7 @@ char *intToString(int a){
 	return resStr;
 }
 
+//ANCHOR store
 int store(int x, int y){
 	if (isEmptyList == 1) {
 		head = initList(0,0);
@@ -326,6 +338,7 @@ int store(int x, int y){
 	}
 }
 
+//ANCHOR getInvokedCommand
 enum functions getInvokedCommand(char* command){
 	if(strstr(command, "STORE")) {
 		return STORE;
@@ -345,6 +358,7 @@ enum functions getInvokedCommand(char* command){
 	return COMMANDO_NOT_FOUND;
 }
 
+//ANCHOR initList
 struct Node* initList(int key, int value){
 	struct Node* head = NULL;
 	head = (struct Node*)malloc(sizeof(struct Node));
@@ -353,6 +367,7 @@ struct Node* initList(int key, int value){
 	return head;
 }
 
+//ANCHOR storeLocal
 struct Node* storeLocal(struct Node* nextNode, int key, int value){
 	if(searchLocal(nextNode, key) == NULL) {
 		struct Node* newNode = (struct Node*)malloc(sizeof(struct Node));
@@ -365,6 +380,7 @@ struct Node* storeLocal(struct Node* nextNode, int key, int value){
 	}
 }
 
+//ANCHOR printList
 int printList(struct Node* n) {
 	if (n == NULL){
 		return 0;
@@ -380,6 +396,7 @@ int printList(struct Node* n) {
 	return 1;
 }
 
+//ANCHOR searchLocal
 struct Node* searchLocal(struct Node* head, int key){
 
 	struct Node* cursor = head;
@@ -391,6 +408,7 @@ struct Node* searchLocal(struct Node* head, int key){
 	return NULL;
 }
 
+//ANCHOR handler
 void handler (int sig){
 	if (sig==SIGINT) {
 		close(sd1);// chiude la connessione
