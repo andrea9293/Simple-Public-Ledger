@@ -112,7 +112,7 @@ char* createMessage(int argc, const char* argv[] ){
     char * buf = (char *) malloc (512 *sizeof(char)); 
     char * messaggio = (char *) malloc (512 *sizeof(char));
     
-    write(STDOUT_FILENO, "creazione del messaggio\n", "creazione del messaggio\n");
+    write(STDOUT_FILENO, "creazione del messaggio\n", sizeof("creazione del messaggio\n"));
 
     //inserisce nel messaggio il segnale del sender ed il comando
     strcat(buf, ":c:");
@@ -134,6 +134,6 @@ char* createMessage(int argc, const char* argv[] ){
     int dim = strlen(buf) + strlen(messaggio); //sommo il numero di caratteri
     sprintf(messaggio, "%d", dim);//metto la somma in una stringa
     strcat(messaggio, buf);//concateno il resto del messaggio alla dimensione
-    
+
     return messaggio;
 }
