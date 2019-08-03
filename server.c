@@ -26,6 +26,8 @@ pthread_t runServer(int port);
 int store(int x, int y);
 char *intToString(int a);
 int executeCommands(char * buf);
+struct CommandStructure getCommandStructure (char *buf);
+void printCommandStructure(struct CommandStructure commandStr);
 
 int sd, sd1;
 //ANCHOR strutture
@@ -42,6 +44,14 @@ struct Node {
 	int key;
 	int value;
 	struct Node* next;
+};
+
+struct CommandStructure {
+	int sizeOfMessage;
+	char *sender;
+	char *key;
+	char *value;
+	char *command;
 };
 
 struct Server {//?Ho pensato che creare una lista di server fosse la cosa più sensata
@@ -66,7 +76,7 @@ int main( int argc, const char* argv[]){
 		return 0;
 	}
 	configFileDescriptor = open(argv[1], O_RDONLY);//apertura del file di config
-	//readConfigFile(configFileDescriptor,(char *) argv[2]);//legge gli address dal file config //! da decommentare!!!FIXME 
+	readConfigFile(configFileDescriptor,(char *) argv[2]);//legge gli address dal file config
 
 	int port = atoi(argv[1]);
 	write(STDOUT_FILENO, argv[2], sizeof(int)); //Prendeva solo il primo numero perché scriveva un carattere solo
@@ -275,24 +285,27 @@ void *acceptConnection(void *arg){
 				write(STDOUT_FILENO, "\nprova a leggere...\n", sizeof("\nprova a leggere...\n"));
 				r = read (sd1, tmpBuf, sizeof(char));
 				if (r>0) {//in caso il socket non sia vuoto
-					strcat(buf, tmpBuf);
+					
 					write(STDOUT_FILENO, "letto:\n", sizeof("letto:\n"));
 					write(STDOUT_FILENO, tmpBuf, r *sizeof(char));
 					if (strcmp(tmpBuf, "^") == 0){
 						write(STDOUT_FILENO, "verificato\n", sizeof("verificato\n"));
 						endOfBuffer = 0;
+					}else{
+						strcat(buf, tmpBuf);
 					}
+					
 					write(STDOUT_FILENO, "\n\n", sizeof("\n\n"));
 				}
 				
 				write(STDOUT_FILENO, "\n\ncomando completo:\n", sizeof("\n\ncomando completo:\n"));
-				write(STDOUT_FILENO, buf, sizeof(buf));
+				write(STDOUT_FILENO, buf, strlen(buf));
 				write(STDOUT_FILENO, "\n", sizeof("\n"));
 				free(tmpBuf);
 			}
 			
 			write(STDOUT_FILENO, "comando completo finale:\n", sizeof("comando completo finale:\n"));
-			write(STDOUT_FILENO, buf, sizeof(buf));
+			write(STDOUT_FILENO, buf, strlen(buf));
 
 			//! tentativo di lettura END
 			exitCondition = executeCommands(buf);
@@ -307,11 +320,14 @@ void *acceptConnection(void *arg){
 
 //ANCHOR executeCommands
 int executeCommands(char * buf){
+	struct CommandStructure command = getCommandStructure(buf);
 	write(STDOUT_FILENO, "@@@executeCommmands\n\n", sizeof("@@@executeCommmands\n\n"));
 	int isSuccessInt = 0;
-	switch (getInvokedCommand(buf)) {
+	struct Node* node;
+	switch (getInvokedCommand(command.command)) {
 		case STORE:
-			isSuccessInt = store(0, 0);
+			write(STDOUT_FILENO, "\n@STORE CASE\n", sizeof("@STORE CASE\n"));
+			isSuccessInt = store(atoi(command.key), atoi(command.value));
 			char *isSuccessString;
 			if (isSuccessInt == 1) {
 				isSuccessString = "SUCCESS";
@@ -319,19 +335,37 @@ int executeCommands(char * buf){
 				isSuccessString = "ERROR";
 			}
 			write(STDOUT_FILENO, isSuccessString, strlen(isSuccessString));
+			
+			printList(head);
+			write(STDOUT_FILENO, "\n\n", sizeof("\n\n"));
 			break;
 		case LIST:                         // TODO IMPLEMENTARE LA VERA FUNZIONE LIST
+			write(STDOUT_FILENO, "\n@LIST CASE\n", sizeof("@LIST CASE\n"));
 			isSuccessInt = printList(head);
 			if (isSuccessInt == 0) {
 				write(STDOUT_FILENO, "There are no record", sizeof("There are no record"));
 			}
+			write(STDOUT_FILENO, "\n\n", sizeof("\n\n"));
 			break;
 		case SEARCH:                       // TODO IMPLEMENTARE LA VERA FUNZIONE SEARCH
-			if(searchLocal(head, 5) != NULL) {
-				write(STDOUT_FILENO, "trovato il 5\n\n", sizeof("trovato il 5\n\n"));
+			write(STDOUT_FILENO, "\n@SEARCH CASE\n", sizeof("@SEARCH CASE\n"));
+			node = searchLocal(head, atoi(command.key));
+			if(node != NULL) {
+				char* key = intToString(node->key);
+				char* value = intToString(node->value);
+			
+				write(STDOUT_FILENO, "trovata la coppia: ", sizeof("trovata la coppia: "));
+				write(STDOUT_FILENO, key, strlen(key));
+				write(STDOUT_FILENO, ", ", sizeof(", "));
+				write(STDOUT_FILENO, value, strlen(value));
+
+				free(key);
+				free(value);
 			}else{
-				write(STDOUT_FILENO, "non trovato il 5\n\n", sizeof("non trovato il 5\n\n"));
+				write(STDOUT_FILENO, "chiave non trovata", sizeof("chiave non trovata"));
 			}
+			write(STDOUT_FILENO, "\n\n", sizeof("\n\n"));
+			
 			break;
 		case EXIT:                         // TODO PERCHÉ NON CI VA MAI?
 			close(sd1); // chiude la connessione
@@ -340,6 +374,7 @@ int executeCommands(char * buf){
 		case CORRUPT:   
 			// TODO IMPLEMENTARE LA VERA FUNZIONE CORRUPT
 			write(STDOUT_FILENO, "corrupt", sizeof("corrupt"));
+			printList(head);
 			write(sd1, "corrato", sizeof("corrato"));//!ho scritto una cacata per testare
 			break;
 		case COMMANDO_NOT_FOUND:
@@ -348,6 +383,84 @@ int executeCommands(char * buf){
 	}
 	return 1;
 }
+
+struct CommandStructure getCommandStructure (char *buf){
+	write(STDOUT_FILENO, "\n@@@getCommandStructure\n\n", sizeof("\n@@@getCommandStructure\n\n"));
+	struct CommandStructure commandStr;
+	char *p;
+	char *sizeOfMessageStr;
+	p = strtok (buf,":-");
+	int counter = 0;
+	while (p!= NULL)
+	
+	{
+		counter++;
+		if (counter == 1){
+			sizeOfMessageStr = p;
+			commandStr.sizeOfMessage = atoi(sizeOfMessageStr);
+		}else if (counter == 2)
+		{
+			p = strtok (NULL, ":-");
+			commandStr.sender = p;
+		}else if (counter == 3)
+		{
+			p = strtok (NULL, ":-");
+			commandStr.command = p;
+			if (strstr(commandStr.command, "LIST")){
+				break;
+			}
+
+		}else if (counter == 4)
+		{
+			p = strtok (NULL, ":-");
+			commandStr.key = p;
+			if (strstr(commandStr.command, "SEARCH")){
+				break;
+			}
+			
+		}else if (counter == 5)
+		{
+			p = strtok (NULL, ":-");
+			commandStr.value = p;
+		}else
+		{
+			write(STDOUT_FILENO, "\n\nsono a 6 quindi metto p a NULL\n\n ", sizeof("\n\nsono a 6 quindi metto p a NULL\n\n "));
+			//p = NULL; //!va in sig fault se decommentato
+			break;
+		}	
+		
+	}
+	printf ("\n\nfine ciclo\ncounter: %d\n", counter);
+	printCommandStructure(commandStr);
+	write(STDOUT_FILENO, "\n\n", sizeof("\n\n"));
+	return commandStr;
+}
+
+void printCommandStructure(struct CommandStructure commandStr){
+	write(STDOUT_FILENO, "\n@@@printCommandStructure\n\n", sizeof("\n@@@printCommandStructure\n\n"));
+	char *sizeOfMessageStr = intToString(commandStr.sizeOfMessage);
+	write(STDOUT_FILENO, "\ncommandStr.sizeOfMessage: ", sizeof("\ncommandStr.sizeOfMessage: "));
+	write(STDOUT_FILENO, sizeOfMessageStr, strlen(sizeOfMessageStr));
+	free(sizeOfMessageStr);
+
+	write(STDOUT_FILENO, "\ncommandStr.sender: ", sizeof("\ncommandStr.sender: "));
+	write(STDOUT_FILENO, commandStr.sender, strlen(commandStr.sender));
+
+	write(STDOUT_FILENO, "\ncommandStr.command: ", sizeof("\ncommandStr.command: "));
+	write(STDOUT_FILENO, commandStr.command, strlen(commandStr.command));
+
+	if (!strstr(commandStr.command, "LIST")){
+		write(STDOUT_FILENO, "\ncommandStr.key: ", sizeof("\ncommandStr.key: "));
+		write(STDOUT_FILENO, commandStr.key, strlen(commandStr.key));
+
+		if (!strstr(commandStr.command, "SEARCH")){
+			write(STDOUT_FILENO, "\ncommandStr.value: ", sizeof("\ncommandStr.value: "));
+			write(STDOUT_FILENO, commandStr.value, strlen(commandStr.value));
+		}
+	}
+	write(STDOUT_FILENO, "\n\n", sizeof("\n\n"));
+}
+
 //ANCHOR intToString
 //TODO non vengono mai liberate le stringhe. Eventualmente va tolta
 char *intToString(int a){
@@ -359,7 +472,7 @@ char *intToString(int a){
 //ANCHOR store
 int store(int x, int y){
 	if (isEmptyList == 1) {
-		head = initList(0,0);
+		head = initList(x,y);
 		isEmptyList = 0;
 		return 1;
 	}else{
@@ -375,7 +488,7 @@ int store(int x, int y){
 //ANCHOR getInvokedCommand
 enum functions getInvokedCommand(char* command){
 	write(STDOUT_FILENO, "@@@getInvokedCommand\n", sizeof("@@@getInvokedCommand\n"));
-	write(STDOUT_FILENO, command, sizeof(command));
+	write(STDOUT_FILENO, command, strlen(command));
 	if(strstr(command, "STORE")) {
 		return STORE;
 	}
@@ -396,6 +509,12 @@ enum functions getInvokedCommand(char* command){
 
 //ANCHOR initList
 struct Node* initList(int key, int value){
+	write(STDOUT_FILENO, "\nkey: ", sizeof("\nkey: "));
+	write(STDOUT_FILENO, intToString(key), strlen(intToString(key)));
+	write(STDOUT_FILENO, "\nvalue: ", sizeof("\nvalue: "));
+	write(STDOUT_FILENO, intToString(value), strlen(intToString(value)));
+	
+	printf("value: %d:", value);
 	struct Node* head = NULL;
 	head = (struct Node*)malloc(sizeof(struct Node));
 	head->key = key;
@@ -405,6 +524,11 @@ struct Node* initList(int key, int value){
 
 //ANCHOR storeLocal
 struct Node* storeLocal(struct Node* nextNode, int key, int value){
+	/* write(STDOUT_FILENO, "\nkey: ", sizeof("\nkey: "));
+	write(STDOUT_FILENO, intToString(key), strlen(intToString(key)));
+	write(STDOUT_FILENO, "\nvalue: ", sizeof("\nvalue: "));
+	write(STDOUT_FILENO, intToString(value), strlen(intToString(value)));*/
+
 	if(searchLocal(nextNode, key) == NULL) {
 		struct Node* newNode = (struct Node*)malloc(sizeof(struct Node));
 		newNode->value = value;
@@ -418,6 +542,7 @@ struct Node* storeLocal(struct Node* nextNode, int key, int value){
 
 //ANCHOR printList
 int printList(struct Node* n) {
+	write(STDOUT_FILENO, "\n\n@@@printList\n", sizeof("\n\n@@@printList\n"));
 	if (n == NULL){
 		return 0;
 	}
@@ -427,6 +552,7 @@ int printList(struct Node* n) {
 		write(STDOUT_FILENO, key, sizeof(key));
 		write(STDOUT_FILENO, ", ", sizeof(", "));
 		write(STDOUT_FILENO, value, sizeof(value));
+		write(STDOUT_FILENO, "\n", sizeof("\n"));
 		n = n->next;
 	}
 	return 1;
@@ -434,7 +560,7 @@ int printList(struct Node* n) {
 
 //ANCHOR searchLocal
 struct Node* searchLocal(struct Node* head, int key){
-
+	write(STDOUT_FILENO, "\n\n@@@searchLocal\n", sizeof("\n\n@@@searchLocal\n"));
 	struct Node* cursor = head;
 	while(cursor!=NULL) {
 		if(cursor->key == key)
