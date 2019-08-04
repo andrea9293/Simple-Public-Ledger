@@ -28,6 +28,7 @@ char *intToString(int a);
 int executeCommands(char * buf);
 struct CommandStructure getCommandStructure (char *buf);
 void printCommandStructure(struct CommandStructure commandStr);
+struct Node* corrupt(int key, int value);
 
 int sd, sd1;
 //ANCHOR strutture
@@ -304,20 +305,18 @@ int executeCommands(char * buf){
 	struct CommandStructure command = getCommandStructure(buf);
 	write(STDOUT_FILENO, "@@@executeCommmands\n\n", sizeof("@@@executeCommmands\n\n"));
 	int isSuccessInt = 0;
+	char *isSuccessString;
 	struct Node* node;
 	switch (getInvokedCommand(command.command)) {
 		case STORE:
 			write(STDOUT_FILENO, "\n@STORE CASE\n", sizeof("@STORE CASE\n"));
 			isSuccessInt = store(atoi(command.key), atoi(command.value));
-			char *isSuccessString;
 			if (isSuccessInt == 1) {
 				isSuccessString = "SUCCESS";
 			}else{
 				isSuccessString = "ERROR";
 			}
 			write(STDOUT_FILENO, isSuccessString, strlen(isSuccessString));
-			
-			printList(head);
 			write(STDOUT_FILENO, "\n\n", sizeof("\n\n"));
 			break;
 		case LIST:                         // TODO IMPLEMENTARE LA VERA FUNZIONE LIST
@@ -354,9 +353,17 @@ int executeCommands(char * buf){
 			break;
 		case CORRUPT:   
 			// TODO IMPLEMENTARE LA VERA FUNZIONE CORRUPT
-			write(STDOUT_FILENO, "corrupt", sizeof("corrupt"));
-			printList(head);
-			write(sd1, "corrato", sizeof("corrato"));//!ho scritto una cacata per testare
+			write(STDOUT_FILENO, "\n@CORRUPT CASE\n", sizeof("@CORRUPT CASE\n"));
+			node = corrupt(atoi(command.key), atoi(command.value));
+			if (node != NULL) {
+				isSuccessString = "SUCCESS CORRUPT";
+			}else{
+				isSuccessString = "ERROR CORRUPT";
+			}
+			write(STDOUT_FILENO, isSuccessString, strlen(isSuccessString));
+			write(STDOUT_FILENO, "\n\n", sizeof("\n\n"));
+
+
 			break;
 		case COMMANDO_NOT_FOUND:
 			write(STDOUT_FILENO, "Command not found", sizeof("Command not found"));
@@ -505,16 +512,23 @@ struct Node* initList(int key, int value){
 
 //ANCHOR storeLocal
 struct Node* storeLocal(struct Node* nextNode, int key, int value){
-	/* write(STDOUT_FILENO, "\nkey: ", sizeof("\nkey: "));
-	write(STDOUT_FILENO, intToString(key), strlen(intToString(key)));
-	write(STDOUT_FILENO, "\nvalue: ", sizeof("\nvalue: "));
-	write(STDOUT_FILENO, intToString(value), strlen(intToString(value)));*/
-
 	if(searchLocal(nextNode, key) == NULL) {
 		struct Node* newNode = (struct Node*)malloc(sizeof(struct Node));
 		newNode->value = value;
 		newNode->key = key;
 		newNode->next = nextNode;
+		return newNode;
+	}else{
+		return NULL;
+	}
+}
+
+//ANCHOR corrupt
+struct Node* corrupt(int key, int value){
+	struct Node* newNode = searchLocal(head, key);
+	if(newNode != NULL) {
+		newNode->value = value;
+		newNode->key = key;
 		return newNode;
 	}else{
 		return NULL;
