@@ -17,7 +17,7 @@ void createConnection();
 void *connectionToServer(void *);//apre le connesisoni
 void *acceptConnection(void *);//accetta le connesisoni
 struct Node* storeLocal(struct Node* nextNode, int key, int value);
-int printList(struct Node* n);
+char * printList(struct Node* n);
 struct Node* searchLocal(struct Node* head, int key);
 struct Node* initList(int key, int value);
 enum functions  getInvokedCommand(char* command);
@@ -300,52 +300,70 @@ void *acceptConnection(void *arg){
 	}
 }
 
+void sendResponse(char* response){
+	char * messaggio = (char *) malloc (512 *sizeof(char));
+
+	//calcolo della dimensione del messaggio
+    sprintf(messaggio, "%ld", strlen(response)); //salvo la dimensione del restante messagigo in una stringa
+    int dim = strlen(response) + strlen(messaggio); //sommo il numero di caratteri
+    sprintf(messaggio, "%d", dim);//metto la somma in una stringa
+    strcat(messaggio, response);//concateno il resto del messaggio alla dimensione
+    strcat(messaggio, "\n");
+
+
+	write(sd1, messaggio, strlen(response)); // sd1 identifica il client dal quale ha ricevuto il messaggio originale
+	int charead = read(sd, messaggio, sizeof(response));
+    write(STDOUT_FILENO, messaggio, charead); 
+	free(messaggio);
+}
+
 //ANCHOR executeCommands
 int executeCommands(char * buf){
 	struct CommandStructure command = getCommandStructure(buf);
 	write(STDOUT_FILENO, "@@@executeCommmands\n\n", sizeof("@@@executeCommmands\n\n"));
 	int isSuccessInt = 0;
-	char *isSuccessString;
+	char *response = (char *) malloc (512 *sizeof(char)); 
+	strcat(response, ":s:");
 	struct Node* node;
 	switch (getInvokedCommand(command.command)) {
 		case STORE:
 			write(STDOUT_FILENO, "\n@STORE CASE\n", sizeof("@STORE CASE\n"));
+			strcat(response, "\n\nSTORE RESPONSE\n");
 			isSuccessInt = store(atoi(command.key), atoi(command.value));
 			if (isSuccessInt == 1) {
-				isSuccessString = "SUCCESS";
+				strcat(response, "STORED SUCCESSFULLY");
 			}else{
-				isSuccessString = "ERROR";
+				strcat(response, "ERROR: KEY ALREADY EXISTS");
 			}
-			write(STDOUT_FILENO, isSuccessString, strlen(isSuccessString));
-			write(STDOUT_FILENO, "\n\n", sizeof("\n\n"));
+			strcat(response, "\n\n");
+			
 			break;
 		case LIST:                         // TODO IMPLEMENTARE LA VERA FUNZIONE LIST
 			write(STDOUT_FILENO, "\n@LIST CASE\n", sizeof("@LIST CASE\n"));
-			isSuccessInt = printList(head);
-			if (isSuccessInt == 0) {
-				write(STDOUT_FILENO, "There are no record", sizeof("There are no record"));
-			}
-			write(STDOUT_FILENO, "\n\n", sizeof("\n\n"));
+			strcat(response, "\n\nLIST RESPONSE\n");
+			char *list = printList(head);
+			strcat(response, list);
+			strcat(response, "\n\n");
+			free(list);
 			break;
 		case SEARCH:                       // TODO IMPLEMENTARE LA VERA FUNZIONE SEARCH
 			write(STDOUT_FILENO, "\n@SEARCH CASE\n", sizeof("@SEARCH CASE\n"));
 			node = searchLocal(head, atoi(command.key));
+			strcat(response, "\n\nSEARCH RESPONSE\n");
 			if(node != NULL) {
 				char* key = intToString(node->key);
 				char* value = intToString(node->value);
-			
-				write(STDOUT_FILENO, "trovata la coppia: ", sizeof("trovata la coppia: "));
-				write(STDOUT_FILENO, key, strlen(key));
-				write(STDOUT_FILENO, ", ", sizeof(", "));
-				write(STDOUT_FILENO, value, strlen(value));
-
+				strcat(response, key);
+				strcat(response, ", ");
+				strcat(response, value);
 				free(key);
 				free(value);
+				
 			}else{
-				write(STDOUT_FILENO, "chiave non trovata", sizeof("chiave non trovata"));
+				strcat(response, "chiave non trovata");
 			}
-			write(STDOUT_FILENO, "\n\n", sizeof("\n\n"));
-			
+			strcat(response, "\n\n");
+			write(STDOUT_FILENO, "\n\n", sizeof("\n\n"));			
 			break;
 		case EXIT:                         // TODO PERCHÉ NON CI VA MAI?
 			close(sd1); // chiude la connessione
@@ -354,21 +372,23 @@ int executeCommands(char * buf){
 		case CORRUPT:   
 			// TODO IMPLEMENTARE LA VERA FUNZIONE CORRUPT
 			write(STDOUT_FILENO, "\n@CORRUPT CASE\n", sizeof("@CORRUPT CASE\n"));
+			strcat(response, "\n\nCORRUPT RESPONSE\n");
 			node = corrupt(atoi(command.key), atoi(command.value));
 			if (node != NULL) {
-				isSuccessString = "SUCCESS CORRUPT";
+				strcat(response, "KEY REPLACED SUCCESSFULLY");
 			}else{
-				isSuccessString = "ERROR CORRUPT";
+				strcat(response, "ERROR: KEY NOT EXISTS");
 			}
-			write(STDOUT_FILENO, isSuccessString, strlen(isSuccessString));
-			write(STDOUT_FILENO, "\n\n", sizeof("\n\n"));
-
+			strcat(response, "\n\n");
 
 			break;
 		case COMMANDO_NOT_FOUND:
 			write(STDOUT_FILENO, "Command not found", sizeof("Command not found"));
 			break;
 	}
+	write(STDOUT_FILENO, response, strlen(response));
+	sendResponse(response);
+	free(response);
 	return 1;
 }
 
@@ -536,21 +556,23 @@ struct Node* corrupt(int key, int value){
 }
 
 //ANCHOR printList
-int printList(struct Node* n) {
+char *printList(struct Node* n) {
 	write(STDOUT_FILENO, "\n\n@@@printList\n", sizeof("\n\n@@@printList\n"));
+	char *list = (char *) malloc (1024 *sizeof(char)); 
 	if (n == NULL){
-		return 0;
+		strcat(list, "There are no record\n");
+		return list;
 	}
 	while (n != NULL) {
 		char *key = intToString(n->key);
 		char *value = intToString(n->value);
-		write(STDOUT_FILENO, key, sizeof(key));
-		write(STDOUT_FILENO, ", ", sizeof(", "));
-		write(STDOUT_FILENO, value, sizeof(value));
-		write(STDOUT_FILENO, "\n", sizeof("\n"));
+		strcat(list, key);
+		strcat(list, ", ");
+		strcat(list, value);
+		strcat(list, "\n");
 		n = n->next;
 	}
-	return 1;
+	return list;
 }
 
 //ANCHOR searchLocal

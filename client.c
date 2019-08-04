@@ -14,6 +14,8 @@ int checkCorrectInput(int,  char*);
 int checkCorrectCommand(char*);
 //funzione che crea il messaggio "comando-param1-param2" da inviare al server
 char* createMessage(int, const char*[]);
+// funzione per la lettura del messaggio inviato dal server
+void readFromServer(int sd);
 
 int main( int argc, const char* argv[]){
     
@@ -60,14 +62,42 @@ int main( int argc, const char* argv[]){
     write(STDOUT_FILENO, message, strlen(message));
 
     write(sd, message, strlen(message));
-    charead = read(sd, message, sizeof(message));
-    write(STDOUT_FILENO, message, charead); 
+    
+    /*charead = read(sd, message, sizeof(message));
+    write(STDOUT_FILENO, message, charead); */
+    readFromServer(sd);
     
     free(message);
     
     close(sd);// chiusura del socket
 
     return 0;
+}
+
+void readFromServer(int sd){
+    int r;
+    char *buf = (char *) malloc( 128 * sizeof(char *));
+    char * messaggio = (char *) malloc( 128 * sizeof(char *));
+    char * sup = (char *) malloc (128 *sizeof(char));
+
+	//! tentativo di lettura START
+	r = read (sd, buf, 128);
+	strcpy(messaggio, buf);
+	strcpy(sup, messaggio);
+	int size = atoi(strtok(sup, ":"));
+	write(STDOUT_FILENO, messaggio, size);
+	printf("\n\nsize %d, r %d\n\n", size, r);
+	if (size == (r-1)){
+		write(STDOUT_FILENO, "dimensione corretta", sizeof("dimensione corretta"));
+	} else if( size < r-1){
+		write(STDOUT_FILENO, "letto troppo", sizeof("letto troppo"));
+	} else {
+		write(STDOUT_FILENO, "letto poco", sizeof("letto poco"));
+	}
+
+    free(buf);
+    free(messaggio);
+    free(sup);
 }
 
 //controlla che siano stati dati abbastanza parametri per il comando (torna 1 in caso di errore)
