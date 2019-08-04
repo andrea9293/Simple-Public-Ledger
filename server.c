@@ -11,6 +11,8 @@
 #include <arpa/inet.h>
 #include <pthread.h>
 
+#define BUFFSIZE 128
+
 //ANCHOR firma funzioni
 void readConfigFile(int, char*);//Legge il config e salva gli indirizzi in una lista
 void createConnection();
@@ -98,10 +100,10 @@ int main( int argc, const char* argv[]){
 //!NOT TESTED
 //ANCHOR readConfigFile
 void readConfigFile(int fileDescriptor, char* selfPort){
-	int bufferSize = 15;//dimensione del buffer di lettura. La dimensione di address:porta
-	char* buffer = (char*) malloc (bufferSize * sizeof(char *));//buffer in lettura
-	char* add = (char*) malloc (bufferSize * sizeof(char *));//stringa di supporto per salvare l'add
-	char* porta = (char*) malloc (bufferSize * sizeof(char *));//stringa di supporto per salvare la porta
+	int addressBufferSize = 15;//dimensione del buffer di lettura. La dimensione di address:porta
+	char* buffer = (char*) malloc (addressBufferSize * sizeof(char *));//buffer in lettura
+	char* add = (char*) malloc (addressBufferSize * sizeof(char *));//stringa di supporto per salvare l'add
+	char* porta = (char*) malloc (addressBufferSize * sizeof(char *));//stringa di supporto per salvare la porta
 	const char delim[2] = ":";//delimitatore per lo strtok
 	long port; //versione long del numero di porta da assegnare all'elemento della lista
 	struct Server* currentServer =  NULL; //per scorrere la lista
@@ -111,7 +113,7 @@ void readConfigFile(int fileDescriptor, char* selfPort){
 	currentServer = serverListHead;
 
    //lettura degli address e separazione in tokens
-   	while(read(fileDescriptor, buffer, bufferSize) > 0) { //finché vengono letti indirizzi
+   	while(read(fileDescriptor, buffer, addressBufferSize) > 0) { //finché vengono letti indirizzi
 		add = strtok(buffer, delim); //stringa prima del delimitatore
    		porta = strtok(NULL, delim); //stringa dopo il delimitatore
 		if (strncmp(porta, selfPort, 4) != 0){ //evita che il server salvi se stesso
@@ -163,7 +165,7 @@ void createConnection(){
 void *connectionToServer(void *server){
 	int connectResult; //utile al controllo errori sulle connessioni
 	struct Server* currentServer = (struct Server *)server; //cast del parametro passato
-	char* buffer = (char*) malloc (80 * sizeof(char *));//buffer in lettura
+	char* buffer = (char*) malloc (BUFFSIZE * sizeof(char *));//buffer in lettura
 
 
 	write(STDOUT_FILENO, "tentativo di connessione a:", sizeof("tentativo di connessione a:"));
@@ -246,9 +248,9 @@ pthread_t runServer(int port){
 //ANCHOR acceptConnection
 //accetta le connessioni in attesa
 void *acceptConnection(void *arg){
-	char * messaggio = (char *) malloc( 128 * sizeof(char *));
-	char * buf = (char *) malloc( 128 * sizeof(char *));
-	char * sup = (char *) malloc (128 *sizeof(char));
+	char * messaggio = (char *) malloc( BUFFSIZE * sizeof(char *));
+	char * buf = (char *) malloc( BUFFSIZE * sizeof(char *));
+	char * sup = (char *) malloc (BUFFSIZE *sizeof(char));
 	struct sockaddr_in claddress;
 	socklen_t dimaddcl = sizeof(claddress);
 	int exitCondition = 1;
@@ -270,19 +272,25 @@ void *acceptConnection(void *arg){
 			int r;
 
 			//! tentativo di lettura START
-			r = read (sd1, buf, 128);
-			strcpy(messaggio, buf);
-			strcpy(sup, messaggio);
+			r = read (sd1, buf, BUFFSIZE);
+			strcpy(sup, buf);
 			int size = atoi(strtok(sup, ":"));
-			write(STDOUT_FILENO, messaggio, size);
+			write(STDOUT_FILENO, buf, r);
 			printf("\n\nsize %d, r %d\n\n", size, r);
-			if (size == (r-1)){
+			if (size == r){
 				write(STDOUT_FILENO, "dimensione corretta", sizeof("dimensione corretta"));
-			} else if( size < r-1){
-				write(STDOUT_FILENO, "letto troppo", sizeof("letto troppo"));
+				strcpy(messaggio, buf);
+
+			} else if( size < r){
+				strncpy(messaggio, buf, size);
 
 			} else {
-				write(STDOUT_FILENO, "letto poco", sizeof("letto poco"));
+				while (size > r){
+					r = read (sd1, buf, BUFFSIZE);
+					strncpy(sup, buf, size - (r-1));
+					strcat(messaggio, sup);
+					write(STDOUT_FILENO, messaggio, size);
+				}
 			}
 
 			
@@ -301,18 +309,19 @@ void *acceptConnection(void *arg){
 }
 
 void sendResponse(char* response){
-	char * messaggio = (char *) malloc (512 *sizeof(char));
+	char * messaggio = (char *) malloc (BUFFSIZE *sizeof(char));
 
 	//calcolo della dimensione del messaggio
-    sprintf(messaggio, "%ld", strlen(response)); //salvo la dimensione del restante messagigo in una stringa
+    sprintf(messaggio, "%ld", strlen(response)); //salvo la dimensione del restante messaggio in una stringa
     int dim = strlen(response) + strlen(messaggio); //sommo il numero di caratteri
     sprintf(messaggio, "%d", dim);//metto la somma in una stringa
-    strcat(messaggio, response);//concateno il resto del messaggio alla dimensione
+    write(STDOUT_FILENO, messaggio, strlen(messaggio));
+	strcat(messaggio, response);//concateno il resto del messaggio alla dimensione
     strcat(messaggio, "\n");
 
 
-	write(sd1, messaggio, strlen(response)); // sd1 identifica il client dal quale ha ricevuto il messaggio originale
-	int charead = read(sd, messaggio, sizeof(response));
+	write(sd1, messaggio, dim); // sd1 identifica il client dal quale ha ricevuto il messaggio originale
+	int charead = read(sd, messaggio, sizeof(response)); //?se è più di un carattere sarebbe meglio strlen
     write(STDOUT_FILENO, messaggio, charead); 
 	free(messaggio);
 }
@@ -322,34 +331,35 @@ int executeCommands(char * buf){
 	struct CommandStructure command = getCommandStructure(buf);
 	write(STDOUT_FILENO, "@@@executeCommmands\n\n", sizeof("@@@executeCommmands\n\n"));
 	int isSuccessInt = 0;
-	char *response = (char *) malloc (512 *sizeof(char)); 
+	char *response = (char *) malloc (BUFFSIZE *sizeof(char)); 
 	strcat(response, ":s:");
 	struct Node* node;
 	switch (getInvokedCommand(command.command)) {
 		case STORE:
 			write(STDOUT_FILENO, "\n@STORE CASE\n", sizeof("@STORE CASE\n"));
-			strcat(response, "\n\nSTORE RESPONSE\n");
+			strcat(response, "STORE RESPONSE");
 			isSuccessInt = store(atoi(command.key), atoi(command.value));
 			if (isSuccessInt == 1) {
-				strcat(response, "STORED SUCCESSFULLY");
+				strcat(response, "success");
+
 			}else{
 				strcat(response, "ERROR: KEY ALREADY EXISTS");
 			}
-			strcat(response, "\n\n");
+			//strcat(response, "\n\n");
 			
 			break;
 		case LIST:                         // TODO IMPLEMENTARE LA VERA FUNZIONE LIST
 			write(STDOUT_FILENO, "\n@LIST CASE\n", sizeof("@LIST CASE\n"));
-			strcat(response, "\n\nLIST RESPONSE\n");
+			strcat(response, "LIST RESPONSE");
 			char *list = printList(head);
 			strcat(response, list);
-			strcat(response, "\n\n");
+			//strcat(response, "\n\n");
 			free(list);
 			break;
 		case SEARCH:                       // TODO IMPLEMENTARE LA VERA FUNZIONE SEARCH
 			write(STDOUT_FILENO, "\n@SEARCH CASE\n", sizeof("@SEARCH CASE\n"));
 			node = searchLocal(head, atoi(command.key));
-			strcat(response, "\n\nSEARCH RESPONSE\n");
+			strcat(response, "SEARCH RESPONSE");
 			if(node != NULL) {
 				char* key = intToString(node->key);
 				char* value = intToString(node->value);
@@ -362,7 +372,7 @@ int executeCommands(char * buf){
 			}else{
 				strcat(response, "chiave non trovata");
 			}
-			strcat(response, "\n\n");
+			//strcat(response, "\n\n");
 			write(STDOUT_FILENO, "\n\n", sizeof("\n\n"));			
 			break;
 		case EXIT:                         // TODO PERCHÉ NON CI VA MAI?
@@ -372,14 +382,14 @@ int executeCommands(char * buf){
 		case CORRUPT:   
 			// TODO IMPLEMENTARE LA VERA FUNZIONE CORRUPT
 			write(STDOUT_FILENO, "\n@CORRUPT CASE\n", sizeof("@CORRUPT CASE\n"));
-			strcat(response, "\n\nCORRUPT RESPONSE\n");
+			strcat(response, "CORRUPT RESPONSE");
 			node = corrupt(atoi(command.key), atoi(command.value));
 			if (node != NULL) {
 				strcat(response, "KEY REPLACED SUCCESSFULLY");
 			}else{
 				strcat(response, "ERROR: KEY NOT EXISTS");
 			}
-			strcat(response, "\n\n");
+			//strcat(response, "\n\n");
 
 			break;
 		case COMMANDO_NOT_FOUND:

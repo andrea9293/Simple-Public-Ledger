@@ -8,12 +8,14 @@
 #include <arpa/inet.h>
 #include <sys/un.h>
 
+#define BUFFSIZE 128
+
 //funzione che controlla che siano inseriti abbastanza parametri per il comando
 int checkCorrectInput(int,  char*);
 //funzione che controlla che il comando inserito sia valido
 int checkCorrectCommand(char*);
 //funzione che crea il messaggio "comando-param1-param2" da inviare al server
-char* createMessage(int, const char*[]);
+char* createMessage(int, const char*[], int*);
 // funzione per la lettura del messaggio inviato dal server
 void readFromServer(int sd);
 
@@ -21,7 +23,8 @@ int main( int argc, const char* argv[]){
     
     int sd, sd1; //socket descriptor
     struct sockaddr_in address; //indirizzo del socket
-    char * message = (char *) malloc (128 *sizeof(char)); //buffer per la comunicazione con il server
+    char * message = (char *) malloc (BUFFSIZE *sizeof(char)); //buffer per la comunicazione con il server
+    int messageSize = 0;
     int charead;//caratteri letti tramite read
     int error = 0;//variabile utile a controllo errori sull'input
    
@@ -32,7 +35,7 @@ int main( int argc, const char* argv[]){
         return 0;
 	} else{
         //controlliamo che il comando inserito sia valido
-        error = checkCorrectCommand((char *)argv[3]);//? separato per puilizia
+        error = checkCorrectCommand((char *) argv[3]);//? separato per puilizia
         if(error == 1){
             write(STDOUT_FILENO, "comando non riconosciuto", sizeof("comando non riconosciuto"));
             return 0;
@@ -57,11 +60,11 @@ int main( int argc, const char* argv[]){
     connect(sd, (struct sockaddr *)&address, sizeof(address)); //connessione
     
     //Invio del messaggio al server    
-    strcpy(message, createMessage(argc, argv));
+    strcpy(message, createMessage(argc, argv, &messageSize));
 
     write(STDOUT_FILENO, message, strlen(message));
 
-    write(sd, message, strlen(message));
+    write(sd, message, messageSize);
     
     /*charead = read(sd, message, sizeof(message));
     write(STDOUT_FILENO, message, charead); */
@@ -76,24 +79,35 @@ int main( int argc, const char* argv[]){
 
 void readFromServer(int sd){
     int r;
-    char *buf = (char *) malloc( 128 * sizeof(char *));
-    char * messaggio = (char *) malloc( 128 * sizeof(char *));
-    char * sup = (char *) malloc (128 *sizeof(char));
+    char * buf = (char *) malloc( BUFFSIZE * sizeof(char *));
+    char * messaggio = (char *) malloc( BUFFSIZE * sizeof(char *));
+    char * sup = (char *) malloc (BUFFSIZE *sizeof(char));
 
 	//! tentativo di lettura START
 	r = read (sd, buf, 128);
-	strcpy(messaggio, buf);
-	strcpy(sup, messaggio);
-	int size = atoi(strtok(sup, ":"));
-	write(STDOUT_FILENO, messaggio, size);
-	printf("\n\nsize %d, r %d\n\n", size, r);
-	if (size == (r-1)){
-		write(STDOUT_FILENO, "dimensione corretta", sizeof("dimensione corretta"));
-	} else if( size < r-1){
-		write(STDOUT_FILENO, "letto troppo", sizeof("letto troppo"));
-	} else {
-		write(STDOUT_FILENO, "letto poco", sizeof("letto poco"));
-	}
+        strcpy(sup, buf);
+        int size = atoi(strtok(sup, ":"));
+        write(STDOUT_FILENO, buf, size);
+        printf("\n\nsize %d, r %d\n\n", size, r);
+        if (size == (r-1)){
+            write(STDOUT_FILENO, "dimensione corretta", sizeof("dimensione corretta"));
+            strcpy(messaggio, buf);
+
+        } else if( size < r -1){
+            strncpy(messaggio, buf, size);
+
+        } else {
+            int sumSize = r;
+            while ((size > sumSize) && (r > 0)){
+                r = read (sd, buf, 128);
+                sumSize += r;
+                strncpy(sup, buf, size - (r-1));
+                strcat(messaggio, sup);
+                write(STDOUT_FILENO, messaggio, size);
+                printf("\n\nsumsize %d, r %d\n\n", sumSize, r);
+                         
+            }
+        }
 
     free(buf);
     free(messaggio);
@@ -139,9 +153,9 @@ NOTE il protocollo funziona con un messaggio strutturato come segue
 ad esempio
 8:c:LIST
 */
-char* createMessage(int argc, const char* argv[] ){
-    char * buf = (char *) malloc (512 *sizeof(char)); 
-    char * messaggio = (char *) malloc (512 *sizeof(char));
+char* createMessage(int argc, const char* argv[], int *size){
+    char * buf = (char *) malloc (BUFFSIZE *sizeof(char)); 
+    char * messaggio = (char *) malloc (BUFFSIZE *sizeof(char));
     
     write(STDOUT_FILENO, "creazione del messaggio\n", sizeof("creazione del messaggio\n"));
 
@@ -166,6 +180,7 @@ char* createMessage(int argc, const char* argv[] ){
     sprintf(messaggio, "%d", dim);//metto la somma in una stringa
     strcat(messaggio, buf);//concateno il resto del messaggio alla dimensione
     strcat(messaggio, "\n");
+    *size = dim;
 
     return messaggio;
 }
