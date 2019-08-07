@@ -31,6 +31,8 @@ int executeCommands(char * buf);
 struct CommandStructure getCommandStructure (char *buf);
 void printCommandStructure(struct CommandStructure commandStr);
 struct Node* corrupt(int key, int value);
+void forwardMessage(struct CommandStructure);
+void *forwardToServers(void *);
 
 int sd, sd1;
 //ANCHOR strutture
@@ -116,24 +118,17 @@ void readConfigFile(int fileDescriptor, char* selfPort){
    	while(read(fileDescriptor, buffer, addressBufferSize) > 0) { //finché vengono letti indirizzi
 		add = strtok(buffer, delim); //stringa prima del delimitatore
    		porta = strtok(NULL, delim); //stringa dopo il delimitatore
-		if (strncmp(porta, selfPort, 4) != 0){ //evita che il server salvi se stesso
-			write(STDOUT_FILENO, "creazione server ", sizeof("creazione server "));
-			write(STDOUT_FILENO, add, strlen(add));
-			write(STDOUT_FILENO, ":", sizeof(":"));
-			write(STDOUT_FILENO, porta, strlen(porta));		
-			
-			
+		if (strncmp(porta, selfPort, 4) != 0){ //evita che il server salvi se stesso	
 			currentServer->address.sin_family = AF_INET;//famiglia dell'address del socket
 			port = atoi(porta);//conversione della porta a long
 			currentServer->address.sin_port = htons(port);//assegnazione porta
 			inet_pton(AF_INET, add, &currentServer->address.sin_addr);//assegnazione address
 			
-			write(STDOUT_FILENO, "fine creazione server", sizeof("fine creazione server"));
-			write(STDOUT_FILENO, "\n", sizeof("\n"));
 
 			if(lastServer != NULL){ //l'head non ha predecessori
 				lastServer->next = currentServer; //assegnzione del corrente al next precedente
 			}
+
 			lastServer = currentServer; //salviamo il current come precedente
 			currentServer = (struct Server *) malloc (sizeof(struct Server*));//allocazione dell'elemento della lista
 		}
@@ -152,12 +147,13 @@ void createConnection(){
 		if(pthread_create(&threadId, NULL, connectionToServer, currentServer) != 0){//crea un thread
         	perror("errore thread");
 		} else {
+			write(STDOUT_FILENO, ".", sizeof("."));
 			pthread_join(threadId, NULL); //join del thread con quello padre.
 		}
 		
 		currentServer = currentServer->next;
 	}
-	write(STDOUT_FILENO, "Stabilite connessioni con tutti i server\n", sizeof("Stabilite connessioni con tutti i server\n"));
+	write(STDOUT_FILENO, "\nStabilite connessioni con tutti i server\n", sizeof("\nStabilite connessioni con tutti i server\n"));
 }
 
 //ANCHOR connectionToServer
@@ -168,7 +164,7 @@ void *connectionToServer(void *server){
 	char* buffer = (char*) malloc (BUFFSIZE * sizeof(char *));//buffer in lettura
 
 
-	write(STDOUT_FILENO, "tentativo di connessione a:", sizeof("tentativo di connessione a:"));
+	write(STDOUT_FILENO, "\ntentativo di connessione a:", sizeof("\ntentativo di connessione a:"));
 	inet_ntop(AF_INET, &(currentServer->address.sin_addr), buffer, INET_ADDRSTRLEN);
 	write(STDOUT_FILENO, buffer, strlen(buffer));
 	write(STDOUT_FILENO, ":", sizeof(":"));
@@ -178,8 +174,7 @@ void *connectionToServer(void *server){
 	currentServer->socketDescriptor = socket(AF_INET, SOCK_STREAM, 0);//socket tcp tramite stream di dati, connection-oriented
     connectResult = connect(currentServer->socketDescriptor, (struct sockaddr *)&currentServer->address, sizeof(currentServer->address)); //connessione
 	while(connectResult != 0){ //finché la connessione non è staiblita
-		write(STDOUT_FILENO, "\nconnessione non riuscita, nuovo tentativo", sizeof("\nconnessione non riuscita, nuovo tentativo"));
-		write(STDOUT_FILENO, "\n", sizeof("\n"));
+		write(STDOUT_FILENO, "\nconnessione non riuscita, nuovo tentativo\n", sizeof("\nconnessione non riuscita, nuovo tentativo\n"));
 		sleep(10);
 		connectResult = connect(currentServer->socketDescriptor, (struct sockaddr *)&currentServer->address, sizeof(currentServer->address)); //connessione
 	}
@@ -209,56 +204,24 @@ pthread_t runServer(int port){
 
 	pthread_t threadId;
 	int exitCondition = 1;
-//	while (exitCondition == 1) {
-		//char * buf = (char *) malloc (128 *sizeof(char));
-		//char * sup = (char *) malloc (8 *sizeof(char));
-		if(pthread_create(&threadId, NULL, acceptConnection, NULL) != 0){//crea un thread
-			perror("errore thread");
-		} else {
-			write(STDOUT_FILENO, "thread creato\n", sizeof("thread creato\n"));
-			return threadId;
-		}
-		
-	
-			/* write(STDOUT_FILENO, "accepted\n", sizeof("accepted\n"));
 
-			int r = read (sd1, buf, sizeof(buf));
-			if (r>0) {
-				int add = getpeername(sd1, (struct sockaddr *)&claddress, &dimaddcl);
-				strcpy (sup, inet_ntoa(claddress.sin_addr));
-				write(STDOUT_FILENO, sup, strlen(sup));
-				write(STDOUT_FILENO, ": ", sizeof(": "));
-				write(STDOUT_FILENO, buf, r *sizeof(char));
-				exitCondition = executeCommands(buf);
-				write(STDOUT_FILENO, "\n\n", sizeof("\n\n"));
-			}
-
-			free(buf);
-			free(sup);
-
-		}
-		close(sd1);// chiude la connessione
+	if(pthread_create(&threadId, NULL, acceptConnection, NULL) != 0){//crea un thread
+		perror("errore thread");
+	} else {
+		write(STDOUT_FILENO, "thread creato\n", sizeof("thread creato\n"));
+		return threadId;
 	}
-
-	close(sd);// rende il servizio non raggiungibile
-	exit(1);
-*/
-//	}
 }
 //ANCHOR acceptConnection
 //accetta le connessioni in attesa
 void *acceptConnection(void *arg){
-	char * messaggio = (char *) malloc( BUFFSIZE * sizeof(char *));
-	char * buf = (char *) malloc( BUFFSIZE * sizeof(char *));
-	char * sup = (char *) malloc (BUFFSIZE *sizeof(char));
+	char * messaggio = (char *) malloc(BUFFSIZE * sizeof(char *));
+	char * buf = (char *) malloc(BUFFSIZE * sizeof(char *));
+	char * sup = (char *) malloc(BUFFSIZE * sizeof(char *));
 	struct sockaddr_in claddress;
 	socklen_t dimaddcl = sizeof(claddress);
 	int exitCondition = 1;
 	while (exitCondition == 1) {
-		
-
-		
-
 		sd1 = accept(sd, (struct sockaddr *) NULL, NULL);// estrae una richieta di connessione
 		if (sd1>1) { //in caso l'accettazione sia andata a buon fine
 			int add = getsockname(sd1, (struct sockaddr *)&claddress, &dimaddcl);
@@ -269,10 +232,9 @@ void *acceptConnection(void *arg){
 			sprintf(sup, "%d", ntohs(claddress.sin_port));
 			write(STDOUT_FILENO, sup, strlen(sup));
 			write(STDOUT_FILENO, "\n", sizeof("\n"));
-			int r;
 
 			//! tentativo di lettura START
-			r = read (sd1, buf, BUFFSIZE);
+			int r = read (sd1, buf, BUFFSIZE);
 			strcpy(sup, buf);
 			int size = atoi(strtok(sup, ":"));
 			write(STDOUT_FILENO, buf, r);
@@ -285,28 +247,27 @@ void *acceptConnection(void *arg){
 				strncpy(messaggio, buf, size);
 
 			} else {
-				while (size > r){
-					r = read (sd1, buf, BUFFSIZE);
+				int sumSize = r;
+            	while ((size > sumSize) && (r > 0)){
+					r = read (sd, buf, 128);
+					sumSize += r;
 					strncpy(sup, buf, size - (r-1));
 					strcat(messaggio, sup);
 					write(STDOUT_FILENO, messaggio, size);
-				}
-			}
-
-			
-			
-			
-
-			//! tentativo di lettura END
-			exitCondition = executeCommands(messaggio);
-			//free(buf);
-			free(messaggio);
-			free(sup);
-
-		}
-		close(sd1);// chiude la connessione
+					printf("\n\nsumsize %d, r %d\n\n", sumSize, r);
+                         
+            	}
+       		}
+		}	
+		//! tentativo di lettura END
+		exitCondition = executeCommands(messaggio);
+		free(buf);
+		free(messaggio);
+		//free(sup); //!questo rompe tutto//TODO Capire che cazzo vuole
 	}
+	close(sd1);// chiude la connessione
 }
+
 
 void sendResponse(char* response){
 	char * messaggio = (char *) malloc (BUFFSIZE *sizeof(char));
@@ -315,16 +276,17 @@ void sendResponse(char* response){
     sprintf(messaggio, "%ld", strlen(response)); //salvo la dimensione del restante messaggio in una stringa
     int dim = strlen(response) + strlen(messaggio); //sommo il numero di caratteri
     sprintf(messaggio, "%d", dim);//metto la somma in una stringa
-    write(STDOUT_FILENO, messaggio, strlen(messaggio));
+    
 	strcat(messaggio, response);//concateno il resto del messaggio alla dimensione
     strcat(messaggio, "\n");
 
-
 	write(sd1, messaggio, dim); // sd1 identifica il client dal quale ha ricevuto il messaggio originale
-	int charead = read(sd, messaggio, sizeof(response)); //?se è più di un carattere sarebbe meglio strlen
+	//?non ho capito a che servono ste cose
+	int charead = read(sd, messaggio, BUFFSIZE); 
     write(STDOUT_FILENO, messaggio, charead); 
 	free(messaggio);
-}
+} 
+
 
 //ANCHOR executeCommands
 int executeCommands(char * buf){
@@ -341,12 +303,13 @@ int executeCommands(char * buf){
 			isSuccessInt = store(atoi(command.key), atoi(command.value));
 			if (isSuccessInt == 1) {
 				strcat(response, "success");
-
+				if (strcmp(command.sender, "c") == 0){
+					forwardMessage(command);
+				}
 			}else{
 				strcat(response, "ERROR: KEY ALREADY EXISTS");
 			}
 			//strcat(response, "\n\n");
-			
 			break;
 		case LIST:                         // TODO IMPLEMENTARE LA VERA FUNZIONE LIST
 			write(STDOUT_FILENO, "\n@LIST CASE\n", sizeof("@LIST CASE\n"));
@@ -368,7 +331,9 @@ int executeCommands(char * buf){
 				strcat(response, value);
 				free(key);
 				free(value);
-				
+				if (strcmp(command.sender, "c") == 0){
+					forwardMessage(command);
+				}
 			}else{
 				strcat(response, "chiave non trovata");
 			}
@@ -398,7 +363,7 @@ int executeCommands(char * buf){
 	}
 	write(STDOUT_FILENO, response, strlen(response));
 	sendResponse(response);
-	free(response);
+	//free(response);
 	return 1;
 }
 
@@ -489,12 +454,15 @@ char *intToString(int a){
 
 //ANCHOR store
 int store(int x, int y){
+
 	if (isEmptyList == 1) {
 		head = initList(x,y);
 		isEmptyList = 0;
 		return 1;
 	}else{
-		struct Node* tmpNode = storeLocal(head,  x, y);
+		struct Node* tmpNode = (struct Node*) malloc (sizeof(struct Node*));
+		tmpNode = storeLocal(head, x, y);
+
 		if (tmpNode != NULL) {
 			head = tmpNode;
 			return 1;
@@ -543,10 +511,13 @@ struct Node* initList(int key, int value){
 //ANCHOR storeLocal
 struct Node* storeLocal(struct Node* nextNode, int key, int value){
 	if(searchLocal(nextNode, key) == NULL) {
-		struct Node* newNode = (struct Node*)malloc(sizeof(struct Node));
+		struct Node* newNode = (struct Node*) malloc(sizeof(struct Node));
 		newNode->value = value;
 		newNode->key = key;
 		newNode->next = nextNode;
+		char *prova =  (char *) malloc(sizeof(char) * 128);
+		sprintf(prova, "%d", newNode->key);
+		write(STDOUT_FILENO, prova, strlen(prova));
 		return newNode;
 	}else{
 		return NULL;
@@ -589,6 +560,7 @@ char *printList(struct Node* n) {
 struct Node* searchLocal(struct Node* head, int key){
 	write(STDOUT_FILENO, "\n\n@@@searchLocal\n", sizeof("\n\n@@@searchLocal\n"));
 	struct Node* cursor = head;
+	
 	while(cursor!=NULL) {
 		if(cursor->key == key)
 			return cursor;
@@ -605,4 +577,32 @@ void handler (int sig){
 		close(sd);// rende il servizio non raggiungibile
 		exit(1);
 	}
+}
+
+void forwardMessage(struct CommandStructure command){
+	char * message = (char *) malloc (BUFFSIZE * sizeof(char *));
+	char * sup = (char *) malloc (sizeof(int));
+	sprintf(sup, "%d", command.sizeOfMessage);
+	strcat(message, sup);
+	strcat(message, ":s:");
+	strcat(message, command.command);
+	strcat(message, " ");
+	strcat(message, command.key);
+	strcat(message, " ");
+	strcat(message, command.value);
+
+	while(serverListHead != NULL){
+
+		write(serverListHead->socketDescriptor, message, command.sizeOfMessage);
+	}
+	return;
+}
+
+void *forwardToServers(void *arg){//bisogna definire una struct con il messaggio, l'sd e la risposta del server stesso
+
+	//manda il messaggio ad uno dei server, tramite l'sd, salvato prima
+	//aspetta la risposta
+
+	//capire come inviare il ris dei confronti
+	return;
 }

@@ -81,7 +81,7 @@ void readFromServer(int sd){
     int r;
     char * buf = (char *) malloc( BUFFSIZE * sizeof(char *));
     char * messaggio = (char *) malloc( BUFFSIZE * sizeof(char *));
-    char * sup = (char *) malloc (BUFFSIZE *sizeof(char));
+    char * sup = (char *) malloc (BUFFSIZE *sizeof(char *));
 
 	//! tentativo di lettura START
 	r = read (sd, buf, 128);
@@ -89,11 +89,11 @@ void readFromServer(int sd){
         int size = atoi(strtok(sup, ":"));
         write(STDOUT_FILENO, buf, size);
         printf("\n\nsize %d, r %d\n\n", size, r);
-        if (size == (r-1)){
+        if (size == r){
             write(STDOUT_FILENO, "dimensione corretta", sizeof("dimensione corretta"));
             strcpy(messaggio, buf);
 
-        } else if( size < r -1){
+        } else if( size < r){
             strncpy(messaggio, buf, size);
 
         } else {
