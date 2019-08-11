@@ -27,12 +27,14 @@ void handler (int sig);
 pthread_t runServer(int port);
 int store(int x, int y);
 char *intToString(int a);
-int executeCommands(char * buf);
+int executeCommands(char * buf, int);
 struct CommandStructure getCommandStructure (char *buf);
 void printCommandStructure(struct CommandStructure commandStr);
 struct Node* corrupt(int key, int value);
 void forwardMessage(struct CommandStructure);
 void *forwardToServers(void *);
+void sendResponse(char* , int);
+
 
 int sd, sd1;
 //ANCHOR strutture
@@ -65,6 +67,13 @@ struct Server {//?Ho pensato che creare una lista di server fosse la cosa più s
 	int socketDescriptor;
 };
 
+struct Forward {
+	int socketDescriptor;
+	char * message;
+	int size;
+	struct CommandStructure response;
+};
+
 struct Node* head;
 struct Server* serverListHead = NULL;
 int isEmptyList = 1;
@@ -84,15 +93,13 @@ int main( int argc, const char* argv[]){
 	readConfigFile(configFileDescriptor,(char *) argv[2]);//legge gli address dal file config
 
 	int port = atoi(argv[1]);
-	write(STDOUT_FILENO, argv[2], sizeof(int)); //Prendeva solo il primo numero perché scriveva un carattere solo
-	write(STDOUT_FILENO, "\n\n", sizeof("\n\n"));
 	int isEmptyList = 1;
 	head = NULL;
 
 	//TODO decommentare quando si implementeranno i server concorrenti
 	//runServer(port); //!I server concorrenti sono più lanci del file, non più socket nello stesso processo
 	serverThreadId = runServer(atoi(argv[2])); //attivazione del socket in ricezione
-	createConnection(); //creazione delle connessioni agli altri server
+	createConnection();
 	pthread_join(serverThreadId, NULL); //attende la fine del thread server
 	return 0;
 
@@ -143,11 +150,13 @@ void createConnection(){
 	pthread_t threadId;
 
 	write(STDOUT_FILENO, "Stabilimento delle connessioni\n", sizeof("Stabilimento delle connessioni\n"));
+	
 	while(currentServer != NULL){//finché vi sono server salvati
+	
 		if(pthread_create(&threadId, NULL, connectionToServer, currentServer) != 0){//crea un thread
         	perror("errore thread");
 		} else {
-			write(STDOUT_FILENO, ".", sizeof("."));
+			//write(STDOUT_FILENO, ".", sizeof("."));
 			pthread_join(threadId, NULL); //join del thread con quello padre.
 		}
 		
@@ -175,9 +184,15 @@ void *connectionToServer(void *server){
     connectResult = connect(currentServer->socketDescriptor, (struct sockaddr *)&currentServer->address, sizeof(currentServer->address)); //connessione
 	while(connectResult != 0){ //finché la connessione non è staiblita
 		write(STDOUT_FILENO, "\nconnessione non riuscita, nuovo tentativo\n", sizeof("\nconnessione non riuscita, nuovo tentativo\n"));
-		sleep(10);
+		sleep(2);
 		connectResult = connect(currentServer->socketDescriptor, (struct sockaddr *)&currentServer->address, sizeof(currentServer->address)); //connessione
 	}
+	write(STDOUT_FILENO, "\nConnessione stabilita con:", sizeof("\nConnessione stabilita con:"));
+	inet_ntop(AF_INET, &(currentServer->address.sin_addr), buffer, INET_ADDRSTRLEN);
+	write(STDOUT_FILENO, buffer, strlen(buffer));
+	write(STDOUT_FILENO, ":", sizeof(":"));
+	sprintf(buffer, "%d", ntohs(currentServer->address.sin_port));
+	write(STDOUT_FILENO, buffer, strlen(buffer));
 	write(STDOUT_FILENO, "\n", sizeof("\n"));
 
 }
@@ -186,8 +201,10 @@ void *connectionToServer(void *server){
 //! NOT PROPERLY TESTED
 pthread_t runServer(int port){
 	struct sockaddr_in address;
-	struct sockaddr_in claddress;//TODO cancellare
-	socklen_t dimaddcl = sizeof(claddress);//TODO cancellare
+	struct sockaddr_in claddress;
+	socklen_t dimaddcl = sizeof(claddress);
+	char * sup = (char *) malloc(BUFFSIZE * sizeof(char *));
+	int socketDescriptor;
 
 	address.sin_family = AF_INET;
 	address.sin_port = htons(port);
@@ -198,33 +215,37 @@ pthread_t runServer(int port){
 		perror ("errore bind");
 		exit(1);
 	}
-	listen(sd, 15); // rende il servizio raggiungibile
+	listen(sd, 20); // rende il servizio raggiungibile
 
 	write(STDOUT_FILENO, "listening...\n", sizeof("listening...\n"));
 
 	pthread_t threadId;
 	int exitCondition = 1;
-
+	
 	if(pthread_create(&threadId, NULL, acceptConnection, NULL) != 0){//crea un thread
-		perror("errore thread");
+			perror("errore thread");
 	} else {
-		write(STDOUT_FILENO, "thread creato\n", sizeof("thread creato\n"));
-		return threadId;
+			write(STDOUT_FILENO, "thread creato\n", sizeof("thread creato\n"));
+			return threadId;
 	}
+	
 }
 //ANCHOR acceptConnection
 //accetta le connessioni in attesa
 void *acceptConnection(void *arg){
-	char * messaggio = (char *) malloc(BUFFSIZE * sizeof(char *));
-	char * buf = (char *) malloc(BUFFSIZE * sizeof(char *));
-	char * sup = (char *) malloc(BUFFSIZE * sizeof(char *));
+	
 	struct sockaddr_in claddress;
 	socklen_t dimaddcl = sizeof(claddress);
 	int exitCondition = 1;
+	int socketDescriptor;
+	
 	while (exitCondition == 1) {
-		sd1 = accept(sd, (struct sockaddr *) NULL, NULL);// estrae una richieta di connessione
-		if (sd1>1) { //in caso l'accettazione sia andata a buon fine
-			int add = getsockname(sd1, (struct sockaddr *)&claddress, &dimaddcl);
+		char * messaggio = (char *) malloc(BUFFSIZE * sizeof(char *));
+		char * buf = (char *) malloc(BUFFSIZE * sizeof(char *));
+		char * sup = (char *) malloc(BUFFSIZE * sizeof(char *));
+		socketDescriptor = accept(sd, (struct sockaddr *) NULL, NULL);// estrae una richieta di connessione
+		if (socketDescriptor>1) { //in caso l'accettazione sia andata a buon fine
+			int add = getsockname(socketDescriptor, (struct sockaddr *)&claddress, &dimaddcl);
 			strcpy (sup, inet_ntoa(claddress.sin_addr));
 			write(STDOUT_FILENO, "Connessione accettata da: ", sizeof("connessione accettata da:"));
 			write(STDOUT_FILENO, sup, strlen(sup));
@@ -232,9 +253,8 @@ void *acceptConnection(void *arg){
 			sprintf(sup, "%d", ntohs(claddress.sin_port));
 			write(STDOUT_FILENO, sup, strlen(sup));
 			write(STDOUT_FILENO, "\n", sizeof("\n"));
-
 			//! tentativo di lettura START
-			int r = read (sd1, buf, BUFFSIZE);
+			int r = read (socketDescriptor, buf, BUFFSIZE);
 			strcpy(sup, buf);
 			int size = atoi(strtok(sup, ":"));
 			write(STDOUT_FILENO, buf, r);
@@ -248,28 +268,29 @@ void *acceptConnection(void *arg){
 
 			} else {
 				int sumSize = r;
-            	while ((size > sumSize) && (r > 0)){
-					r = read (sd, buf, 128);
+				while ((size > sumSize) && (r > 0)){
+					r = read (socketDescriptor, buf, 128);
 					sumSize += r;
 					strncpy(sup, buf, size - (r-1));
 					strcat(messaggio, sup);
 					write(STDOUT_FILENO, messaggio, size);
 					printf("\n\nsumsize %d, r %d\n\n", sumSize, r);
-                         
-            	}
-       		}
+							
+				}
+			}
+			//! tentativo di lettura END
+			exitCondition = executeCommands(messaggio, socketDescriptor);
+			free(buf);
+			free(messaggio);
+			//free(sup); //!questo rompe tutto//TODO Capire che cazzo vuole	
+			}
 		}	
-		//! tentativo di lettura END
-		exitCondition = executeCommands(messaggio);
-		free(buf);
-		free(messaggio);
-		//free(sup); //!questo rompe tutto//TODO Capire che cazzo vuole
-	}
-	close(sd1);// chiude la connessione
+		close(socketDescriptor);// chiude la connessione
+
 }
 
 
-void sendResponse(char* response){
+void sendResponse(char* response, int socketDescriptor){
 	char * messaggio = (char *) malloc (BUFFSIZE *sizeof(char));
 
 	//calcolo della dimensione del messaggio
@@ -280,16 +301,16 @@ void sendResponse(char* response){
 	strcat(messaggio, response);//concateno il resto del messaggio alla dimensione
     strcat(messaggio, "\n");
 
-	write(sd1, messaggio, dim); // sd1 identifica il client dal quale ha ricevuto il messaggio originale
+	write(socketDescriptor, messaggio, dim); // sd1 identifica il client dal quale ha ricevuto il messaggio originale
 	//?non ho capito a che servono ste cose
-	int charead = read(sd, messaggio, BUFFSIZE); 
+	int charead = read(socketDescriptor, messaggio, BUFFSIZE); 
     write(STDOUT_FILENO, messaggio, charead); 
 	free(messaggio);
 } 
 
 
 //ANCHOR executeCommands
-int executeCommands(char * buf){
+int executeCommands(char * buf, int socketDescriptor){
 	struct CommandStructure command = getCommandStructure(buf);
 	write(STDOUT_FILENO, "@@@executeCommmands\n\n", sizeof("@@@executeCommmands\n\n"));
 	int isSuccessInt = 0;
@@ -362,7 +383,7 @@ int executeCommands(char * buf){
 			break;
 	}
 	write(STDOUT_FILENO, response, strlen(response));
-	sendResponse(response);
+	sendResponse(response, socketDescriptor);
 	//free(response);
 	return 1;
 }
@@ -582,6 +603,7 @@ void handler (int sig){
 void forwardMessage(struct CommandStructure command){
 	char * message = (char *) malloc (BUFFSIZE * sizeof(char *));
 	char * sup = (char *) malloc (sizeof(int));
+	struct Forward fwdMseesage;
 	sprintf(sup, "%d", command.sizeOfMessage);
 	strcat(message, sup);
 	strcat(message, ":s:");
@@ -592,17 +614,55 @@ void forwardMessage(struct CommandStructure command){
 	strcat(message, command.value);
 
 	while(serverListHead != NULL){
+		write(STDOUT_FILENO, "dentro il while", sizeof("dentro il while"));
+		fwdMseesage.socketDescriptor = serverListHead->socketDescriptor;
+		strcpy(fwdMseesage.message, message);
+		fwdMseesage.size = command.sizeOfMessage;
+		pthread_t threadId;
 
-		write(serverListHead->socketDescriptor, message, command.sizeOfMessage);
+		if(pthread_create(&threadId, NULL, forwardToServers, &fwdMseesage) != 0){//crea un thread
+			perror("errore thread");
+		} else {
+			pthread_join(threadId, NULL);
+		}
+			
 	}
 	return;
 }
 
 void *forwardToServers(void *arg){//bisogna definire una struct con il messaggio, l'sd e la risposta del server stesso
-
-	//manda il messaggio ad uno dei server, tramite l'sd, salvato prima
+	struct Forward *fwd = (struct Forward *)arg;
+	char * messaggio = (char *) malloc(BUFFSIZE * sizeof(char *));
+	char * buf = (char *) malloc(BUFFSIZE * sizeof(char *));
+	char * sup = (char *) malloc(BUFFSIZE * sizeof(char *));
+	write(STDOUT_FILENO, "dentro il thread", sizeof("dentro il thread"));
+	write(fwd->socketDescriptor, fwd->message, fwd->size);
 	//aspetta la risposta
+	//! tentativo di lettura START
+	int r = read (fwd->socketDescriptor, buf, BUFFSIZE);
+	strcpy(sup, buf);
+	int size = atoi(strtok(sup, ":"));
+	write(STDOUT_FILENO, buf, r);
+	printf("\n\nsize %d, r %d\n\n", size, r);
+	if (size == r){
+		write(STDOUT_FILENO, "dimensione corretta", sizeof("dimensione corretta"));
+		strcpy(messaggio, buf);
+
+	} else if( size < r){
+		strncpy(messaggio, buf, size);
+
+	} else {
+		int sumSize = r;
+		while ((size > sumSize) && (r > 0)){
+			r = read (fwd->socketDescriptor, buf, 128);
+			sumSize += r;
+			strncpy(sup, buf, size - (r-1));
+			strcat(messaggio, sup);
+			write(STDOUT_FILENO, messaggio, size);
+			printf("\n\nsumsize %d, r %d\n\n", sumSize, r);
+					
+		}
+	}
 
 	//capire come inviare il ris dei confronti
-	return;
 }

@@ -27,7 +27,7 @@ int main( int argc, const char* argv[]){
     int messageSize = 0;
     int charead;//caratteri letti tramite read
     int error = 0;//variabile utile a controllo errori sull'input
-   
+   int connectRes;
 
    // Controlli di correttezza input
     if (argc < 4) { //3 è il minimo di parametri necessari: ip, porta, comando (argv[0] è il nome programma)
@@ -57,22 +57,27 @@ int main( int argc, const char* argv[]){
     write(STDOUT_FILENO, "Tentativo di conessione al server\n", sizeof("Tentativo di conessione al server\n"));
     
     sd = socket(AF_INET, SOCK_STREAM, 0);//socket tcp tramite stream di dati, connection-oriented
-    connect(sd, (struct sockaddr *)&address, sizeof(address)); //connessione
-    
-    //Invio del messaggio al server    
-    strcpy(message, createMessage(argc, argv, &messageSize));
+    connectRes = connect(sd, (struct sockaddr *)&address, sizeof(address)); //connessione
+    while (connectRes != 0){
+        write(STDOUT_FILENO, "\nConnessione non riuscita... Nuovo tentativo\n", sizeof("\nConnessione non riuscita... Nuovo tentativo\n"));
+        sleep(1);
+        connectRes = connect(sd, (struct sockaddr *)&address, sizeof(address)); //connessiones
+    } 
+        //Invio del messaggio al server    
+        strcpy(message, createMessage(argc, argv, &messageSize));
 
-    write(STDOUT_FILENO, message, strlen(message));
+        write(STDOUT_FILENO, message, strlen(message));
 
-    write(sd, message, messageSize);
-    
-    /*charead = read(sd, message, sizeof(message));
-    write(STDOUT_FILENO, message, charead); */
-    readFromServer(sd);
-    
-    free(message);
-    
-    close(sd);// chiusura del socket
+        write(sd, message, messageSize);
+        
+        /*charead = read(sd, message, sizeof(message));
+        write(STDOUT_FILENO, message, charead); */
+        readFromServer(sd);
+        
+        free(message);
+        
+        close(sd);// chiusura del socket
+   
 
     return 0;
 }
