@@ -12,6 +12,7 @@
 #include <pthread.h>
 
 #define BUFFSIZE 128
+#define CLEAR_SCREEN_ANSI "\e[1;1H\e[2J"
 
 //ANCHOR strutture
 enum functions {
@@ -159,6 +160,7 @@ void createConnection(){
 		}
 		currentServer = currentServer->next;
 	}
+	write(STDOUT_FILENO, CLEAR_SCREEN_ANSI, 12);
 	write(STDOUT_FILENO, "\nStabilite connessioni con tutti i server\n", sizeof("\nStabilite connessioni con tutti i server\n"));
 }
 
@@ -190,7 +192,6 @@ void *connectionToServer(void *server){
 	sprintf(buffer, "%d", ntohs(currentServer->address.sin_port));
 	write(STDOUT_FILENO, buffer, strlen(buffer));
 	write(STDOUT_FILENO, "\n", sizeof("\n"));
-
 }
 
 //ANCHOR runServer
@@ -223,10 +224,11 @@ pthread_t runServer(int port){
 		
 		socketDescriptor = accept(sd, (struct sockaddr *) NULL, NULL);// estrae una richieta di connessione
 		if (socketDescriptor>1) { //in caso l'accettazione sia andata a buon fine
+			write(STDOUT_FILENO, "accettata\n", sizeof("accettata\n"));
 			if(pthread_create(&threadId, NULL, acceptConnection, &socketDescriptor) != 0){//crea un thread
 					perror("errore thread");
 			} else {
-				pthread_join(threadId, NULL);
+				//pthread_join(threadId, NULL);
 			}
 		}
 	}
@@ -251,35 +253,37 @@ void *acceptConnection(void *arg){
 	write(STDOUT_FILENO, sup, strlen(sup));
 	write(STDOUT_FILENO, "\n", sizeof("\n"));
 	//! tentativo di lettura START
-	int r = read (*socketDescriptor, buf, BUFFSIZE);
-	strcpy(sup, buf);
-	int size = atoi(strtok(sup, ":"));
-	write(STDOUT_FILENO, buf, r);
-	printf("\n\nsize %d, r %d\n\n", size, r);
-	if (size == r){
-		write(STDOUT_FILENO, "dimensione corretta", sizeof("dimensione corretta"));
-		strcpy(messaggio, buf);
+	while (exitCondition == 1) {
+		int r = read (*socketDescriptor, buf, BUFFSIZE);
+		strcpy(sup, buf);
+		int size = atoi(strtok(sup, ":"));
+		write(STDOUT_FILENO, buf, r);
+		printf("\n\nsize %d, r %d\n\n", size, r);
+		if (size == r){
+			write(STDOUT_FILENO, "dimensione corretta", sizeof("dimensione corretta"));
+			strcpy(messaggio, buf);
 
-	} else if( size < r){
-		strncpy(messaggio, buf, size);
+		} else if( size < r){
+			strncpy(messaggio, buf, size);
 
-	} else {
-		int sumSize = r;
-		while ((size > sumSize) && (r > 0)){
-			r = read (*socketDescriptor, buf, 128);
-			sumSize += r;
-			strncpy(sup, buf, size - (r-1));
-			strcat(messaggio, sup);
-			write(STDOUT_FILENO, messaggio, size);
-			printf("\n\nsumsize %d, r %d\n\n", sumSize, r);
-					
+		} else {
+			int sumSize = r;
+			while ((size > sumSize) && (r > 0)){
+				r = read (*socketDescriptor, buf, 128);
+				sumSize += r;
+				strncpy(sup, buf, size - (r-1));
+				strcat(messaggio, sup);
+				write(STDOUT_FILENO, messaggio, size);
+				printf("\n\nsumsize %d, r %d\n\n", sumSize, r);
+						
+			}
 		}
+		//! tentativo di lettura END
+		exitCondition = executeCommands(messaggio, *socketDescriptor);
+		free(buf);
+		free(messaggio);
+		//free(sup); //!questo rompe tutto//TODO Capire che cazzo vuole	
 	}
-	//! tentativo di lettura END
-	exitCondition = executeCommands(messaggio, *socketDescriptor);
-	free(buf);
-	free(messaggio);
-	//free(sup); //!questo rompe tutto//TODO Capire che cazzo vuole	
 	close(*socketDescriptor);// chiude la connessione
 }
 
@@ -469,7 +473,6 @@ char *intToString(int a){
 
 //ANCHOR store
 int store(int x, int y){
-
 	if (isEmptyList == 1) {
 		head = initList(x,y);
 		isEmptyList = 0;
@@ -597,7 +600,11 @@ void handler (int sig){
 void forwardMessage(struct CommandStructure command){
 	char * message = (char *) malloc (BUFFSIZE * sizeof(char *));
 	char * sup = (char *) malloc (sizeof(int));
-	struct Forward fwdMseesage;
+	struct Forward fwdMessage;
+	pthread_t threadId;
+	fwdMessage.message = (char *) malloc(BUFFSIZE * sizeof(char *));
+
+
 	sprintf(sup, "%d", command.sizeOfMessage);
 	strcat(message, sup);
 	strcat(message, ":s:");
@@ -606,15 +613,15 @@ void forwardMessage(struct CommandStructure command){
 	strcat(message, command.key);
 	strcat(message, " ");
 	strcat(message, command.value);
-
+	write(STDOUT_FILENO, message,command.sizeOfMessage);
 	while(serverListHead != NULL){
-		write(STDOUT_FILENO, "dentro il while", sizeof("dentro il while"));
-		fwdMseesage.socketDescriptor = serverListHead->socketDescriptor;
-		strcpy(fwdMseesage.message, message);
-		fwdMseesage.size = command.sizeOfMessage;
-		pthread_t threadId;
+		write(STDOUT_FILENO, "Inoltro del comando", sizeof("Inoltro del comando"));
 
-		if(pthread_create(&threadId, NULL, forwardToServers, &fwdMseesage) != 0){//crea un thread
+		fwdMessage.socketDescriptor = serverListHead->socketDescriptor;
+		strcpy(fwdMessage.message, message);
+		fwdMessage.size = command.sizeOfMessage;
+
+		if(pthread_create(&threadId, NULL, forwardToServers, &fwdMessage) != 0){//crea un thread
 			perror("errore thread");
 		} else {
 			pthread_join(threadId, NULL);
@@ -629,34 +636,37 @@ void *forwardToServers(void *arg){//bisogna definire una struct con il messaggio
 	char * messaggio = (char *) malloc(BUFFSIZE * sizeof(char *));
 	char * buf = (char *) malloc(BUFFSIZE * sizeof(char *));
 	char * sup = (char *) malloc(BUFFSIZE * sizeof(char *));
-	write(STDOUT_FILENO, "dentro il thread", sizeof("dentro il thread"));
+	int exitCondition = 1;
+	write(STDOUT_FILENO, "\ndentro il thread", sizeof("dentro il thread"));
 	write(fwd->socketDescriptor, fwd->message, fwd->size);
+
 	//aspetta la risposta
 	//! tentativo di lettura START
-	int r = read (fwd->socketDescriptor, buf, BUFFSIZE);
-	strcpy(sup, buf);
-	int size = atoi(strtok(sup, ":"));
-	write(STDOUT_FILENO, buf, r);
-	printf("\n\nsize %d, r %d\n\n", size, r);
-	if (size == r){
-		write(STDOUT_FILENO, "dimensione corretta", sizeof("dimensione corretta"));
-		strcpy(messaggio, buf);
+	while (exitCondition == 1){
+		int r = read (fwd->socketDescriptor, buf, BUFFSIZE);
+		strcpy(sup, buf);
+		int size = atoi(strtok(sup, ":"));
+		write(STDOUT_FILENO, buf, r);
+		printf("\n\nsize %d, r %d\n\n", size, r);
+		if (size == r){
+			write(STDOUT_FILENO, "dimensione corretta", sizeof("dimensione corretta"));
+			strcpy(messaggio, buf);
 
-	} else if( size < r){
-		strncpy(messaggio, buf, size);
+		} else if( size < r){
+			strncpy(messaggio, buf, size);
 
-	} else {
-		int sumSize = r;
-		while ((size > sumSize) && (r > 0)){
-			r = read (fwd->socketDescriptor, buf, 128);
-			sumSize += r;
-			strncpy(sup, buf, size - (r-1));
-			strcat(messaggio, sup);
-			write(STDOUT_FILENO, messaggio, size);
-			printf("\n\nsumsize %d, r %d\n\n", sumSize, r);
-					
+		} else {
+			int sumSize = r;
+			while ((size > sumSize) && (r > 0)){
+				r = read (fwd->socketDescriptor, buf, 128);
+				sumSize += r;
+				strncpy(sup, buf, size - (r-1));
+				strcat(messaggio, sup);
+				write(STDOUT_FILENO, messaggio, size);
+				printf("\n\nsumsize %d, r %d\n\n", sumSize, r);
+						
+			}
 		}
 	}
-
 	//capire come inviare il ris dei confronti
 }
