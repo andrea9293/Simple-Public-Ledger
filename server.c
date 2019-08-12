@@ -13,30 +13,6 @@
 
 #define BUFFSIZE 128
 
-//ANCHOR firma funzioni
-void readConfigFile(int, char*);//Legge il config e salva gli indirizzi in una lista
-void createConnection();
-void *connectionToServer(void *);//apre le connesisoni
-void *acceptConnection(void *);//accetta le connesisoni
-struct Node* storeLocal(struct Node* nextNode, int key, int value);
-char * printList(struct Node* n);
-struct Node* searchLocal(struct Node* head, int key);
-struct Node* initList(int key, int value);
-enum functions  getInvokedCommand(char* command);
-void handler (int sig);
-pthread_t runServer(int port);
-int store(int x, int y);
-char *intToString(int a);
-int executeCommands(char * buf, int);
-struct CommandStructure getCommandStructure (char *buf);
-void printCommandStructure(struct CommandStructure commandStr);
-struct Node* corrupt(int key, int value);
-void forwardMessage(struct CommandStructure);
-void *forwardToServers(void *);
-void sendResponse(char* , int);
-
-
-int sd, sd1;
 //ANCHOR strutture
 enum functions {
 	STORE,
@@ -74,6 +50,32 @@ struct Forward {
 	struct CommandStructure response;
 };
 
+//ANCHOR firma funzioni
+void readConfigFile(int, char*);//Legge il config e salva gli indirizzi in una lista
+void createConnection();
+void *connectionToServer(void *);//apre le connesisoni
+void *acceptConnection(void *);//accetta le connesisoni
+struct Node* storeLocal(struct Node* nextNode, int key, int value);
+char * printList(struct Node* n);
+struct Node* searchLocal(struct Node* head, int key);
+struct Node* initList(int key, int value);
+enum functions  getInvokedCommand(char* command);
+void handler (int sig);
+pthread_t runServer(int port);
+int store(int x, int y);
+char *intToString(int a);
+int executeCommands(char * buf, int);
+struct CommandStructure getCommandStructure (char *buf);
+void printCommandStructure(struct CommandStructure commandStr);
+struct Node* corrupt(int key, int value);
+void forwardMessage(struct CommandStructure);
+void *forwardToServers(void *);
+void sendResponse(char* , int);
+
+
+int sd, sd1;
+
+
 struct Node* head;
 struct Server* serverListHead = NULL;
 int isEmptyList = 1;
@@ -98,9 +100,7 @@ int main( int argc, const char* argv[]){
 
 	//TODO decommentare quando si implementeranno i server concorrenti
 	//runServer(port); //!I server concorrenti sono più lanci del file, non più socket nello stesso processo
-	serverThreadId = runServer(atoi(argv[2])); //attivazione del socket in ricezione
-	createConnection();
-	pthread_join(serverThreadId, NULL); //attende la fine del thread server
+	runServer(atoi(argv[2])); //attivazione del socket in ricezione
 	return 0;
 
 }
@@ -152,14 +152,11 @@ void createConnection(){
 	write(STDOUT_FILENO, "Stabilimento delle connessioni\n", sizeof("Stabilimento delle connessioni\n"));
 	
 	while(currentServer != NULL){//finché vi sono server salvati
-	
 		if(pthread_create(&threadId, NULL, connectionToServer, currentServer) != 0){//crea un thread
-        	perror("errore thread");
+			perror("errore thread");
 		} else {
-			//write(STDOUT_FILENO, ".", sizeof("."));
-			pthread_join(threadId, NULL); //join del thread con quello padre.
+			pthread_join(threadId, NULL);
 		}
-		
 		currentServer = currentServer->next;
 	}
 	write(STDOUT_FILENO, "\nStabilite connessioni con tutti i server\n", sizeof("\nStabilite connessioni con tutti i server\n"));
@@ -169,9 +166,8 @@ void createConnection(){
 //apre le connesisoni con gli altri server
 void *connectionToServer(void *server){
 	int connectResult; //utile al controllo errori sulle connessioni
-	struct Server* currentServer = (struct Server *)server; //cast del parametro passato
 	char* buffer = (char*) malloc (BUFFSIZE * sizeof(char *));//buffer in lettura
-
+	struct Server * currentServer = (struct Server *) server;
 
 	write(STDOUT_FILENO, "\ntentativo di connessione a:", sizeof("\ntentativo di connessione a:"));
 	inet_ntop(AF_INET, &(currentServer->address.sin_addr), buffer, INET_ADDRSTRLEN);
@@ -221,72 +217,70 @@ pthread_t runServer(int port){
 
 	pthread_t threadId;
 	int exitCondition = 1;
-	
-	if(pthread_create(&threadId, NULL, acceptConnection, NULL) != 0){//crea un thread
-			perror("errore thread");
-	} else {
-			write(STDOUT_FILENO, "thread creato\n", sizeof("thread creato\n"));
-			return threadId;
+	createConnection();
+
+	while (exitCondition == 1) {
+		
+		socketDescriptor = accept(sd, (struct sockaddr *) NULL, NULL);// estrae una richieta di connessione
+		if (socketDescriptor>1) { //in caso l'accettazione sia andata a buon fine
+			if(pthread_create(&threadId, NULL, acceptConnection, &socketDescriptor) != 0){//crea un thread
+					perror("errore thread");
+			} else {
+				pthread_join(threadId, NULL);
+			}
+		}
 	}
-	
 }
 //ANCHOR acceptConnection
 //accetta le connessioni in attesa
 void *acceptConnection(void *arg){
-	
+	char * messaggio = (char *) malloc(BUFFSIZE * sizeof(char *));
+	char * buf = (char *) malloc(BUFFSIZE * sizeof(char *));
+	char * sup = (char *) malloc(BUFFSIZE * sizeof(char *));
 	struct sockaddr_in claddress;
 	socklen_t dimaddcl = sizeof(claddress);
 	int exitCondition = 1;
-	int socketDescriptor;
+	int *socketDescriptor = (int *) arg;
 	
-	while (exitCondition == 1) {
-		char * messaggio = (char *) malloc(BUFFSIZE * sizeof(char *));
-		char * buf = (char *) malloc(BUFFSIZE * sizeof(char *));
-		char * sup = (char *) malloc(BUFFSIZE * sizeof(char *));
-		socketDescriptor = accept(sd, (struct sockaddr *) NULL, NULL);// estrae una richieta di connessione
-		if (socketDescriptor>1) { //in caso l'accettazione sia andata a buon fine
-			int add = getsockname(socketDescriptor, (struct sockaddr *)&claddress, &dimaddcl);
-			strcpy (sup, inet_ntoa(claddress.sin_addr));
-			write(STDOUT_FILENO, "Connessione accettata da: ", sizeof("connessione accettata da:"));
-			write(STDOUT_FILENO, sup, strlen(sup));
-			write(STDOUT_FILENO, ":", sizeof(":"));
-			sprintf(sup, "%d", ntohs(claddress.sin_port));
-			write(STDOUT_FILENO, sup, strlen(sup));
-			write(STDOUT_FILENO, "\n", sizeof("\n"));
-			//! tentativo di lettura START
-			int r = read (socketDescriptor, buf, BUFFSIZE);
-			strcpy(sup, buf);
-			int size = atoi(strtok(sup, ":"));
-			write(STDOUT_FILENO, buf, r);
-			printf("\n\nsize %d, r %d\n\n", size, r);
-			if (size == r){
-				write(STDOUT_FILENO, "dimensione corretta", sizeof("dimensione corretta"));
-				strcpy(messaggio, buf);
+	int add = getsockname(*socketDescriptor, (struct sockaddr *)&claddress, &dimaddcl);
+	strcpy (sup, inet_ntoa(claddress.sin_addr));
+	write(STDOUT_FILENO, "Connessione accettata da: ", sizeof("connessione accettata da:"));
+	write(STDOUT_FILENO, sup, strlen(sup));
+	write(STDOUT_FILENO, ":", sizeof(":"));
+	sprintf(sup, "%d", ntohs(claddress.sin_port));
+	write(STDOUT_FILENO, sup, strlen(sup));
+	write(STDOUT_FILENO, "\n", sizeof("\n"));
+	//! tentativo di lettura START
+	int r = read (*socketDescriptor, buf, BUFFSIZE);
+	strcpy(sup, buf);
+	int size = atoi(strtok(sup, ":"));
+	write(STDOUT_FILENO, buf, r);
+	printf("\n\nsize %d, r %d\n\n", size, r);
+	if (size == r){
+		write(STDOUT_FILENO, "dimensione corretta", sizeof("dimensione corretta"));
+		strcpy(messaggio, buf);
 
-			} else if( size < r){
-				strncpy(messaggio, buf, size);
+	} else if( size < r){
+		strncpy(messaggio, buf, size);
 
-			} else {
-				int sumSize = r;
-				while ((size > sumSize) && (r > 0)){
-					r = read (socketDescriptor, buf, 128);
-					sumSize += r;
-					strncpy(sup, buf, size - (r-1));
-					strcat(messaggio, sup);
-					write(STDOUT_FILENO, messaggio, size);
-					printf("\n\nsumsize %d, r %d\n\n", sumSize, r);
-							
-				}
-			}
-			//! tentativo di lettura END
-			exitCondition = executeCommands(messaggio, socketDescriptor);
-			free(buf);
-			free(messaggio);
-			//free(sup); //!questo rompe tutto//TODO Capire che cazzo vuole	
-			}
-		}	
-		close(socketDescriptor);// chiude la connessione
-
+	} else {
+		int sumSize = r;
+		while ((size > sumSize) && (r > 0)){
+			r = read (*socketDescriptor, buf, 128);
+			sumSize += r;
+			strncpy(sup, buf, size - (r-1));
+			strcat(messaggio, sup);
+			write(STDOUT_FILENO, messaggio, size);
+			printf("\n\nsumsize %d, r %d\n\n", sumSize, r);
+					
+		}
+	}
+	//! tentativo di lettura END
+	exitCondition = executeCommands(messaggio, *socketDescriptor);
+	free(buf);
+	free(messaggio);
+	//free(sup); //!questo rompe tutto//TODO Capire che cazzo vuole	
+	close(*socketDescriptor);// chiude la connessione
 }
 
 
