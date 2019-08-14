@@ -600,6 +600,8 @@ void handler (int sig){
 void forwardMessage(struct CommandStructure command){
 	char * message = (char *) malloc (BUFFSIZE * sizeof(char *));
 	char * sup = (char *) malloc (sizeof(int));
+	char * sup1 = (char *) malloc (sizeof(int));
+	struct Server* currentServer = serverListHead;
 	struct Forward fwdMessage;
 	pthread_t threadId;
 	fwdMessage.message = (char *) malloc(BUFFSIZE * sizeof(char *));
@@ -609,19 +611,23 @@ void forwardMessage(struct CommandStructure command){
 	strcat(message, sup);
 	strcat(message, ":s:");
 	strcat(message, command.command);
-	if (command.key != NULL){
+	//if (command.key != NULL){
 		strcat(message, "-");
 		strcat(message, command.key);
-	}
+//	}
 	
-	if(command.value != NULL){
+//	if(command.value != NULL){
 		strcat(message, "-");
 		strcat(message, command.value);
-	}
+//	}
 	
 
-	while(serverListHead != NULL){
+	while(currentServer != NULL){
 		write(STDOUT_FILENO, "\nInoltro del comando\n", sizeof("\nInoltro del comando\n"));
+		sprintf (sup1, "%d", ntohs(currentServer->address.sin_port));
+		write(STDOUT_FILENO, sup1, sizeof(int));
+		write(STDOUT_FILENO, "\n", sizeof("\n"));
+
 
 		fwdMessage.socketDescriptor = serverListHead->socketDescriptor;
 		strcpy(fwdMessage.message, message);
@@ -631,6 +637,7 @@ void forwardMessage(struct CommandStructure command){
 			perror("errore thread");
 		} else {
 			pthread_join(threadId, NULL);
+			currentServer = currentServer->next;
 		}
 			
 	}
