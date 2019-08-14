@@ -609,13 +609,19 @@ void forwardMessage(struct CommandStructure command){
 	strcat(message, sup);
 	strcat(message, ":s:");
 	strcat(message, command.command);
-	strcat(message, " ");
-	strcat(message, command.key);
-	strcat(message, " ");
-	strcat(message, command.value);
-	write(STDOUT_FILENO, message,command.sizeOfMessage);
+	if (command.key != NULL){
+		strcat(message, "-");
+		strcat(message, command.key);
+	}
+	
+	if(command.value != NULL){
+		strcat(message, "-");
+		strcat(message, command.value);
+	}
+	
+
 	while(serverListHead != NULL){
-		write(STDOUT_FILENO, "Inoltro del comando", sizeof("Inoltro del comando"));
+		write(STDOUT_FILENO, "\nInoltro del comando\n", sizeof("\nInoltro del comando\n"));
 
 		fwdMessage.socketDescriptor = serverListHead->socketDescriptor;
 		strcpy(fwdMessage.message, message);
@@ -637,7 +643,8 @@ void *forwardToServers(void *arg){//bisogna definire una struct con il messaggio
 	char * buf = (char *) malloc(BUFFSIZE * sizeof(char *));
 	char * sup = (char *) malloc(BUFFSIZE * sizeof(char *));
 	int exitCondition = 1;
-	write(STDOUT_FILENO, "\ndentro il thread", sizeof("dentro il thread"));
+
+
 	write(fwd->socketDescriptor, fwd->message, fwd->size);
 
 	//aspetta la risposta
@@ -651,9 +658,11 @@ void *forwardToServers(void *arg){//bisogna definire una struct con il messaggio
 		if (size == r){
 			write(STDOUT_FILENO, "dimensione corretta", sizeof("dimensione corretta"));
 			strcpy(messaggio, buf);
+			exitCondition = 0;
 
 		} else if( size < r){
 			strncpy(messaggio, buf, size);
+			exitCondition = 0;
 
 		} else {
 			int sumSize = r;
