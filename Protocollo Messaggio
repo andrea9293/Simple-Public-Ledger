@@ -1,0 +1,16 @@
+richieste dal client
+<size>:<sender>:<type>:<command-par1-par2>
+sender sarà sempre c
+type sarà sempre req
+
+richieste dal server
+<size>:<sender>:<type>:<command-par1-par2>
+sender sarà sempre s
+type sarà sempre req
+
+risposte dal server
+<size>:<sender>:<type>:<result>-<messge>
+sender sarà sempre s
+type sarà sempre res
+result servirà per identificare il tipo di risultato
+message sarà quello mostrato all'utente

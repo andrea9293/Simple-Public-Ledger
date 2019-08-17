@@ -1,0 +1,11 @@
+Istruzioni di compilazione
+Client
+    gcc -o client client.c
+Server
+    gcc -g -pthread -o server server.c
+
+Istruzioni di Lancio
+Client 
+    ./client <address> <port> <command> <param1> <param2>
+Server
+    ./server config.txt <port>
