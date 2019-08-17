@@ -64,18 +64,15 @@ int main( int argc, const char* argv[]){
         connectRes = connect(sd, (struct sockaddr *)&address, sizeof(address)); //connessiones
     } 
         //Invio del messaggio al server    
-        strcpy(message, createMessage(argc, argv, &messageSize));
-
-        //write(STDOUT_FILENO, message, strlen(message));
+        char* createdMessage = createMessage(argc, argv, &messageSize);
+        strcpy(message, createdMessage);
 
         write(sd, message, messageSize);
         write(STDOUT_FILENO, "messaggio inviato\n", sizeof("messaggio inviato\n"));
-        /*charead = read(sd, message, sizeof(message));
-        write(STDOUT_FILENO, message, charead); */
         readFromServer(sd);
         
         free(message);
-        
+        free(createdMessage);
         close(sd);// chiusura del socket
    
 
@@ -188,5 +185,6 @@ char* createMessage(int argc, const char* argv[], int *size){
     strcat(messaggio, "\n");
     *size = dim;
 
+    free(buf);
     return messaggio;
 }
