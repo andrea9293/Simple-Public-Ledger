@@ -68,15 +68,13 @@ void handler (int sig);
 pthread_t runServer(int port);
 int store(int x, int y);
 char *intToString(int a);
-int executeCommands(char * buf, int);
+int executeCommands(struct CommandStructure, int);
 struct CommandStructure getCommandStructure (char *buf);
 void printCommandStructure(struct CommandStructure commandStr);
 struct Node* corrupt(int key, int value);
 void forwardMessage(struct CommandStructure);
 void *forwardToServers(void *);
 void sendResponse(char* , int);
-
-void printServerList();
 
 
 int sd, sd1;
@@ -173,37 +171,13 @@ void createConnection(){
 		write(STDOUT_FILENO, ":", sizeof(":"));
 		sprintf(buffer, "%d", ntohs(currentServer->address.sin_port));
 		write(STDOUT_FILENO, buffer, strlen(buffer));
-		write(STDOUT_FILENO, "  ", sizeof("   "));
-		sprintf(buffer, "%d", currentServer->socketDescriptor);
-		write(STDOUT_FILENO, buffer, strlen(buffer));
 		write(STDOUT_FILENO, "\n", sizeof("\n"));
 		lastServer = currentServer;
 		currentServer = currentServer->next;
 		lastServer->next = currentServer;
 	}
-	//write(STDOUT_FILENO, CLEAR_SCREEN_ANSI, 12);
+	write(STDOUT_FILENO, CLEAR_SCREEN_ANSI, 12);
 	write(STDOUT_FILENO, "\nStabilite connessioni con tutti i server\n", sizeof("\nStabilite connessioni con tutti i server\n"));
-	printServerList();
-}
-
-void printServerList(){
-	struct Server *currentServer = serverListHead;
-	char* buffer = (char*) malloc (BUFFSIZE * sizeof(char *));//buffer in lettura
-	write(STDOUT_FILENO, "\n", sizeof("\n"));
-
-	while (currentServer != NULL){
-		inet_ntop(AF_INET, &(currentServer->address.sin_addr), buffer, INET_ADDRSTRLEN);
-		write(STDOUT_FILENO, buffer, strlen(buffer));
-		write(STDOUT_FILENO, ":", sizeof(":"));
-		sprintf(buffer, "%d", ntohs(currentServer->address.sin_port));
-		write(STDOUT_FILENO, buffer, strlen(buffer));
-		write(STDOUT_FILENO, "  ", sizeof("   "));
-		sprintf(buffer, "%d", currentServer->socketDescriptor);
-		write(STDOUT_FILENO, buffer, strlen(buffer));
-		write(STDOUT_FILENO, "\n", sizeof("\n"));
-		currentServer = currentServer->next;
-	}
-	return;
 }
 
 //ANCHOR connectionToServer
@@ -322,7 +296,12 @@ void *acceptConnection(void *arg){
 			}
 		}
 		//! tentativo di lettura END
-		exitCondition = executeCommands(messaggio, *socketDescriptor);
+		struct CommandStructure command = getCommandStructure(buf);
+		if(strcmp(command.type, "req") == 0){
+			exitCondition = executeCommands(command, *socketDescriptor);
+		} else {
+
+		}
 		free(buf);
 		free(messaggio);
 		//free(sup); //!questo rompe tutto//TODO Capire che cazzo vuole	
@@ -349,86 +328,83 @@ void sendResponse(char* response, int socketDescriptor){
 
 
 //ANCHOR executeCommands
-int executeCommands(char * buf, int socketDescriptor){
-	struct CommandStructure command = getCommandStructure(buf);
-	if(strcmp(command.type, "req") == 0){
-		write(STDOUT_FILENO, "@@@executeCommmands\n\n", sizeof("@@@executeCommmands\n\n"));
-		int isSuccessInt = 0;
-		char *response = (char *) malloc (BUFFSIZE *sizeof(char)); 
-		strcat(response, ":s:");
-		strcat(response, "res:");
-		struct Node* node;
-		switch (getInvokedCommand(command.command)) {
-			case STORE:
-				write(STDOUT_FILENO, "\n@STORE CASE\n", sizeof("@STORE CASE\n"));
-				strcat(response, "STORE RESPONSE");
-				isSuccessInt = store(atoi(command.key), atoi(command.value));
-				if (isSuccessInt == 1) {
-					strcat(response, "success");
-					if (strcmp(command.sender, "c") == 0){
-						forwardMessage(command);
-					}
-				}else{
-					strcat(response, "ERROR: KEY ALREADY EXISTS");
+int executeCommands(struct CommandStructure command, int socketDescriptor){
+	//struct CommandStructure command = getCommandStructure(buf);
+	write(STDOUT_FILENO, "@@@executeCommmands\n\n", sizeof("@@@executeCommmands\n\n"));
+	int isSuccessInt = 0;
+	char *response = (char *) malloc (BUFFSIZE *sizeof(char)); 
+	strcat(response, ":s:");
+	strcat(response, "res:");
+	struct Node* node;
+	switch (getInvokedCommand(command.command)) {
+		case STORE:
+			write(STDOUT_FILENO, "\n@STORE CASE\n", sizeof("@STORE CASE\n"));
+			strcat(response, "STORE RESPONSE");
+			isSuccessInt = store(atoi(command.key), atoi(command.value));
+			if (isSuccessInt == 1) {
+				strcat(response, "success");
+				if (strcmp(command.sender, "c") == 0){
+					forwardMessage(command);
 				}
-				//strcat(response, "\n\n");
-				break;
-			case LIST:                         // TODO IMPLEMENTARE LA VERA FUNZIONE LIST
-				write(STDOUT_FILENO, "\n@LIST CASE\n", sizeof("@LIST CASE\n"));
-				strcat(response, "LIST RESPONSE");
-				char *list = printList(head);
-				strcat(response, list);
-				//strcat(response, "\n\n");
-				free(list);
-				break;
-			case SEARCH:                       // TODO IMPLEMENTARE LA VERA FUNZIONE SEARCH
-				write(STDOUT_FILENO, "\n@SEARCH CASE\n", sizeof("@SEARCH CASE\n"));
-				node = searchLocal(head, atoi(command.key));
-				strcat(response, "SEARCH RESPONSE");
-				if(node != NULL) {
-					char* key = intToString(node->key);
-					char* value = intToString(node->value);
-					strcat(response, key);
-					strcat(response, ", ");
-					strcat(response, value);
-					free(key);
-					free(value);
-					if (strcmp(command.sender, "c") == 0){
-						forwardMessage(command);
-					}
-				}else{
-					strcat(response, "chiave non trovata");
+			}else{
+				strcat(response, "ERROR: KEY ALREADY EXISTS");
+			}
+			//strcat(response, "\n\n");
+			break;
+		case LIST:                         // TODO IMPLEMENTARE LA VERA FUNZIONE LIST
+			write(STDOUT_FILENO, "\n@LIST CASE\n", sizeof("@LIST CASE\n"));
+			strcat(response, "LIST RESPONSE");
+			char *list = printList(head);
+			strcat(response, list);
+			//strcat(response, "\n\n");
+			free(list);
+			break;
+		case SEARCH:                       // TODO IMPLEMENTARE LA VERA FUNZIONE SEARCH
+			write(STDOUT_FILENO, "\n@SEARCH CASE\n", sizeof("@SEARCH CASE\n"));
+			node = searchLocal(head, atoi(command.key));
+			strcat(response, "SEARCH RESPONSE");
+			if(node != NULL) {
+				char* key = intToString(node->key);
+				char* value = intToString(node->value);
+				strcat(response, key);
+				strcat(response, ", ");
+				strcat(response, value);
+				free(key);
+				free(value);
+				if (strcmp(command.sender, "c") == 0){
+					forwardMessage(command);
 				}
-				//strcat(response, "\n\n");
-				write(STDOUT_FILENO, "\n\n", sizeof("\n\n"));			
-				break;
-			case EXIT:                         // TODO PERCHÉ NON CI VA MAI?
-				close(sd1); // chiude la connessione
-				return 0;
-				break;
-			case CORRUPT:   
-				// TODO IMPLEMENTARE LA VERA FUNZIONE CORRUPT
-				write(STDOUT_FILENO, "\n@CORRUPT CASE\n", sizeof("@CORRUPT CASE\n"));
-				strcat(response, "CORRUPT RESPONSE");
-				node = corrupt(atoi(command.key), atoi(command.value));
-				if (node != NULL) {
-					strcat(response, "KEY REPLACED SUCCESSFULLY");
-				}else{
-					strcat(response, "ERROR: KEY NOT EXISTS");
-				}
-				//strcat(response, "\n\n");
+			}else{
+				strcat(response, "chiave non trovata");
+			}
+			//strcat(response, "\n\n");
+			write(STDOUT_FILENO, "\n\n", sizeof("\n\n"));			
+			break;
+		case EXIT:                         // TODO PERCHÉ NON CI VA MAI?
+			close(sd1); // chiude la connessione
+			return 0;
+			break;
+		case CORRUPT:   
+			// TODO IMPLEMENTARE LA VERA FUNZIONE CORRUPT
+			write(STDOUT_FILENO, "\n@CORRUPT CASE\n", sizeof("@CORRUPT CASE\n"));
+			strcat(response, "CORRUPT RESPONSE");
+			node = corrupt(atoi(command.key), atoi(command.value));
+			if (node != NULL) {
+				strcat(response, "KEY REPLACED SUCCESSFULLY");
+			}else{
+				strcat(response, "ERROR: KEY NOT EXISTS");
+			}
+			//strcat(response, "\n\n");
 
-				break;
-			case COMMANDO_NOT_FOUND:
-				write(STDOUT_FILENO, "Command not found", sizeof("Command not found"));
-				break;
-		}
-		
-		write(STDOUT_FILENO, response, strlen(response));
-		sendResponse(response, socketDescriptor);
-	} else{
-
+			break;
+		case COMMANDO_NOT_FOUND:
+			write(STDOUT_FILENO, "Command not found", sizeof("Command not found"));
+			break;
 	}
+	
+	write(STDOUT_FILENO, response, strlen(response));
+	sendResponse(response, socketDescriptor);
+
 	//free(response);
 	return 1;
 }
