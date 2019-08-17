@@ -27,7 +27,7 @@ int main( int argc, const char* argv[]){
     int messageSize = 0;
     int charead;//caratteri letti tramite read
     int error = 0;//variabile utile a controllo errori sull'input
-   int connectRes;
+    int connectRes;
 
    // Controlli di correttezza input
     if (argc < 4) { //3 è il minimo di parametri necessari: ip, porta, comando (argv[0] è il nome programma)
@@ -166,6 +166,7 @@ char* createMessage(int argc, const char* argv[], int *size){
 
     //inserisce nel messaggio il segnale del sender ed il comando
     strcat(buf, ":c:");
+    strcat(buf, "req:");
     strcat(buf, argv[3]);
 
     if (argc == 5){ //inserisce un parametro in caso ce ne sia solo uno

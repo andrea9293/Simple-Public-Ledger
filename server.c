@@ -33,6 +33,7 @@ struct Node {
 struct CommandStructure {
 	int sizeOfMessage;
 	char *sender;
+	char *type;
 	char *key;
 	char *value;
 	char *command;
@@ -258,7 +259,6 @@ void *acceptConnection(void *arg){
 		strcpy(sup, buf);
 		int size = atoi(strtok(sup, ":"));
 		write(STDOUT_FILENO, buf, r);
-		printf("\n\nsize %d, r %d\n\n", size, r);
 		if (size == r){
 			write(STDOUT_FILENO, "dimensione corretta", sizeof("dimensione corretta"));
 			strcpy(messaggio, buf);
@@ -274,7 +274,6 @@ void *acceptConnection(void *arg){
 				strncpy(sup, buf, size - (r-1));
 				strcat(messaggio, sup);
 				write(STDOUT_FILENO, messaggio, size);
-				printf("\n\nsumsize %d, r %d\n\n", sumSize, r);
 						
 			}
 		}
@@ -290,7 +289,7 @@ void *acceptConnection(void *arg){
 
 void sendResponse(char* response, int socketDescriptor){
 	char * messaggio = (char *) malloc (BUFFSIZE *sizeof(char));
-
+	write(STDOUT_FILENO, "\ninvio risposta\n", sizeof("\ninvio risposta\n"));
 	//calcolo della dimensione del messaggio
     sprintf(messaggio, "%ld", strlen(response)); //salvo la dimensione del restante messaggio in una stringa
     int dim = strlen(response) + strlen(messaggio); //sommo il numero di caratteri
@@ -300,9 +299,10 @@ void sendResponse(char* response, int socketDescriptor){
     strcat(messaggio, "\n");
 
 	write(socketDescriptor, messaggio, dim); // sd1 identifica il client dal quale ha ricevuto il messaggio originale
-	//?non ho capito a che servono ste cose
-	int charead = read(socketDescriptor, messaggio, BUFFSIZE); 
-    write(STDOUT_FILENO, messaggio, charead); 
+	write(STDOUT_FILENO, "\nRisposta inviata\n", sizeof("\nRisposta inviata\n"));
+	//!Bloccava l'invio della risposta in caso di inoltro da server
+	//int charead = read(socketDescriptor, messaggio, BUFFSIZE); /
+    //write(STDOUT_FILENO, messaggio, charead); 
 	free(messaggio);
 } 
 
@@ -314,6 +314,7 @@ int executeCommands(char * buf, int socketDescriptor){
 	int isSuccessInt = 0;
 	char *response = (char *) malloc (BUFFSIZE *sizeof(char)); 
 	strcat(response, ":s:");
+	strcat(response, "res:");
 	struct Node* node;
 	switch (getInvokedCommand(command.command)) {
 		case STORE:
@@ -404,7 +405,12 @@ struct CommandStructure getCommandStructure (char *buf){
 		{
 			p = strtok (NULL, ":-");
 			commandStr.sender = p;
-		}else if (counter == 3)
+		}
+		else if (counter == 3)
+		{
+			p = strtok (NULL, ":-");
+			commandStr.type = p;
+		}else if (counter == 4)
 		{
 			p = strtok (NULL, ":-");
 			commandStr.command = p;
@@ -412,7 +418,7 @@ struct CommandStructure getCommandStructure (char *buf){
 				break;
 			}
 
-		}else if (counter == 4)
+		}else if (counter == 5)
 		{
 			p = strtok (NULL, ":-");
 			commandStr.key = p;
@@ -420,19 +426,18 @@ struct CommandStructure getCommandStructure (char *buf){
 				break;
 			}
 			
-		}else if (counter == 5)
+		}else if (counter == 6)
 		{
 			p = strtok (NULL, ":-");
 			commandStr.value = p;
 		}else
 		{
-			write(STDOUT_FILENO, "\n\nsono a 6 quindi metto p a NULL\n\n ", sizeof("\n\nsono a 6 quindi metto p a NULL\n\n "));
+			write(STDOUT_FILENO, "\n\nsono a 7 quindi metto p a NULL\n\n ", sizeof("\n\nsono a 6 quindi metto p a NULL\n\n "));
 			//p = NULL; //!va in sig fault se decommentato
 			break;
 		}	
 		
 	}
-	printf ("\n\nfine ciclo\ncounter: %d\n", counter);
 	printCommandStructure(commandStr);
 	write(STDOUT_FILENO, "\n\n", sizeof("\n\n"));
 	return commandStr;
@@ -447,6 +452,9 @@ void printCommandStructure(struct CommandStructure commandStr){
 
 	write(STDOUT_FILENO, "\ncommandStr.sender: ", sizeof("\ncommandStr.sender: "));
 	write(STDOUT_FILENO, commandStr.sender, strlen(commandStr.sender));
+
+	write(STDOUT_FILENO, "\ncommandStr.type: ", sizeof("\ncommandStr.type: "));
+	write(STDOUT_FILENO, commandStr.type, strlen(commandStr.type));
 
 	write(STDOUT_FILENO, "\ncommandStr.command: ", sizeof("\ncommandStr.command: "));
 	write(STDOUT_FILENO, commandStr.command, strlen(commandStr.command));
@@ -518,7 +526,6 @@ struct Node* initList(int key, int value){
 	write(STDOUT_FILENO, "\nvalue: ", sizeof("\nvalue: "));
 	write(STDOUT_FILENO, intToString(value), strlen(intToString(value)));
 	
-	printf("value: %d:", value);
 	struct Node* head = NULL;
 	head = (struct Node*)malloc(sizeof(struct Node));
 	head->key = key;
@@ -610,6 +617,7 @@ void forwardMessage(struct CommandStructure command){
 	sprintf(sup, "%d", command.sizeOfMessage);
 	strcat(message, sup);
 	strcat(message, ":s:");
+	strcat(message, "req:");
 	strcat(message, command.command);
 	//if (command.key != NULL){
 		strcat(message, "-");
@@ -626,7 +634,8 @@ void forwardMessage(struct CommandStructure command){
 		write(STDOUT_FILENO, "\nInoltro del comando\n", sizeof("\nInoltro del comando\n"));
 		sprintf (sup1, "%d", ntohs(currentServer->address.sin_port));
 		write(STDOUT_FILENO, sup1, sizeof(int));
-		write(STDOUT_FILENO, "\n", sizeof("\n"));
+		write(STDOUT_FILENO, "  ", sizeof("  "));
+		
 
 
 		fwdMessage.socketDescriptor = serverListHead->socketDescriptor;
@@ -653,15 +662,15 @@ void *forwardToServers(void *arg){//bisogna definire una struct con il messaggio
 
 
 	write(fwd->socketDescriptor, fwd->message, fwd->size);
-
+	write(STDOUT_FILENO, fwd->message, fwd->size);
 	//aspetta la risposta
 	//! tentativo di lettura START
 	while (exitCondition == 1){
+		write(STDOUT_FILENO, "\nAttesa di risposta...", sizeof("\nAttesa di risposta..."));
 		int r = read (fwd->socketDescriptor, buf, BUFFSIZE);
 		strcpy(sup, buf);
 		int size = atoi(strtok(sup, ":"));
 		write(STDOUT_FILENO, buf, r);
-		printf("\n\nsize %d, r %d\n\n", size, r);
 		if (size == r){
 			write(STDOUT_FILENO, "dimensione corretta", sizeof("dimensione corretta"));
 			strcpy(messaggio, buf);
@@ -679,7 +688,6 @@ void *forwardToServers(void *arg){//bisogna definire una struct con il messaggio
 				strncpy(sup, buf, size - (r-1));
 				strcat(messaggio, sup);
 				write(STDOUT_FILENO, messaggio, size);
-				printf("\n\nsumsize %d, r %d\n\n", sumSize, r);
 						
 			}
 		}
