@@ -12,5 +12,12 @@ risposte dal server
 <size>:<sender>:<type>:<result>-<messge>
 sender sarà sempre s
 type sarà sempre res
-result servirà per identificare il tipo di risultato
+result servirà per identificare il tipo di risultato(success, error o list in caso di lista)
 message sarà quello mostrato all'utente
+
+Handshake
+<size>:<sender>:<type>
+sender sarà s, per l'handshake in startup
+type sarà hands
+
+

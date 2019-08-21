@@ -13,6 +13,10 @@
 
 #define BUFFSIZE 128
 #define CLEAR_SCREEN_ANSI "\e[1;1H\e[2J"
+#define HANDSHAKE "11:s:hands"
+#define STARTUPNOTFINISHED "36:s:res:error:startup not finished"
+#define DATANOTMATCHING "39:s:res:error:incongruenze tra dati"
+#define CLOSING "29:s:res:success:spegnimento"
 
 //ANCHOR strutture
 enum functions {
@@ -38,20 +42,26 @@ struct CommandStructure {
 	char *value;
 	char *command;
 	char *message;
-	char *res;
+	char *resoult;
 };
 
 struct Server {//?Ho pensato che creare una lista di server fosse la cosa più sensata
 	struct sockaddr_in address;
 	struct Server* next;
+	int handShakeReceived;
 	int socketDescriptor;
 };
 
 struct Forward {
-	int socketDescriptor;
-	char * message;
+	char *message;
 	int size;
 	struct CommandStructure response;
+	struct Server *server;
+};
+
+struct ForwardList {
+	struct Forward fwd;
+	struct ForwardList *next;
 };
 
 //ANCHOR firma funzioni
@@ -59,51 +69,56 @@ void readConfigFile(int, char*);//Legge il config e salva gli indirizzi in una l
 void createConnection();
 void *connectionToServer(void *);//apre le connesisoni
 void *acceptConnection(void *);//accetta le connesisoni
-struct Node* storeLocal(struct Node* nextNode, int key, int value);
-char * printList(struct Node* n);
-struct Node* searchLocal(struct Node* head, int key);
-struct Node* initList(int key, int value);
-enum functions  getInvokedCommand(char* command);
-void handler (int sig);
-pthread_t runServer(int port);
-int store(int x, int y);
-char *intToString(int a);
+char * readFromPeer(int);
+void setHandShake(int);
+struct Node* storeLocal(struct Node*, int, int);
+char * printList(struct Node*);
+struct Node* searchLocal(struct Node*, int);
+struct Node* initList(int, int);
+enum functions  getInvokedCommand(char*);
+void handler (int);
+pthread_t runServer(int );
+int store(int , int);
+char *intToString(int);
 int executeCommands(struct CommandStructure, int);
-struct CommandStructure getCommandStructure (char *buf);
-void printCommandStructure(struct CommandStructure commandStr);
-struct Node* corrupt(int key, int value);
-void forwardMessage(struct CommandStructure);
+struct CommandStructure getCommandStructure (char *);
+void printCommandStructure(struct CommandStructure );
+struct Node* corrupt(int, int);
+int forwardMessage(struct CommandStructure);
 void *forwardToServers(void *);
-void sendResponse(char* , int);
+int checkForwardResult(struct ForwardList *, char *);
+void sendResponse(char* , int, int);
 
 
 int sd, sd1;
-
-
+int handshakeCounter = 0;
+int serverNumber;
 struct Node* head;
 struct Server* serverListHead = NULL;
 int isEmptyList = 1;
+
 //ANCHOR main
 int main( int argc, const char* argv[]){
 	int configFileDescriptor;
 	pthread_t serverThreadId;
 	signal (SIGINT, handler); //assegnazione dell'handler
-
-	/*		STARTUP		*/
+	write(STDOUT_FILENO, "--- Inizio fase di Start-up del server ---\n", sizeof("--- Inizio fase di Start-up del server ---\n"));
 	//controllo sul numero di input
 	if (argc < 3) {
-		write(STDOUT_FILENO, "Necessari file config,  ip e porta per l'esecuzione\n", sizeof("Necessari file config,  ip e porta per l'esecuzione\n"));
+		write(STDOUT_FILENO, CLEAR_SCREEN_ANSI, 12);
+		write(STDOUT_FILENO, "Errore durante lo Start-up: Necessari file config, ip e porta per l'esecuzione\n", sizeof("Errore durante lo Start-up: Necessari file config,  ip e porta per l'esecuzione\n"));
 		return 0;
 	}
 	configFileDescriptor = open(argv[1], O_RDONLY);//apertura del file di config
 	readConfigFile(configFileDescriptor,(char *) argv[2]);//legge gli address dal file config
 
+	write(STDOUT_FILENO, "\nLettura del file di configurazione avvenuta con successo.\n", sizeof("lettura del file di configurazione avvenuta con successo.\n\n"));
+	system("clear");
 	int port = atoi(argv[1]);
 	int isEmptyList = 1;
 	head = NULL;
 
-	//TODO decommentare quando si implementeranno i server concorrenti
-	//runServer(port); //!I server concorrenti sono più lanci del file, non più socket nello stesso processo
+	
 	runServer(atoi(argv[2])); //attivazione del socket in ricezione
 	return 0;
 
@@ -124,6 +139,9 @@ void readConfigFile(int fileDescriptor, char* selfPort){
 	
 	serverListHead = (struct Server *) malloc (sizeof(struct Server*));//allocazione dell'elemento della lista
 	currentServer = serverListHead;
+	system("clear");
+	write(STDOUT_FILENO, "--- Inizio fase di Start-up del server ---\n", sizeof("--- Inizio fase di Start-up del server ---\n"));
+	write(STDOUT_FILENO, "\nLettura del file di configurazione...\n", sizeof("\nLettura del file di configurazione...\n"));
 
    //lettura degli address e separazione in tokens
    	while(read(fileDescriptor, buffer, addressBufferSize) > 0) { //finché vengono letti indirizzi
@@ -142,6 +160,8 @@ void readConfigFile(int fileDescriptor, char* selfPort){
 
 			lastServer = currentServer; //salviamo il current come precedente
 			currentServer = (struct Server *) malloc (sizeof(struct Server*));//allocazione dell'elemento della lista
+
+			serverNumber ++;
 		}
 		
    }
@@ -156,27 +176,20 @@ void createConnection(){
 	pthread_t threadId;
 	char* buffer = (char*) malloc (BUFFSIZE * sizeof(char *));//buffer in lettura
 
-
-	write(STDOUT_FILENO, "Stabilimento delle connessioni\n", sizeof("Stabilimento delle connessioni\n"));
+	system("clear");
+	write(STDOUT_FILENO, "--- Inizio fase di Start-up del server ---\n", sizeof("--- Inizio fase di Start-up del server ---\n"));
+	write(STDOUT_FILENO, "\nStabilimento delle connessioni con gli altri server\n", sizeof("\nStabilimento delle connessioni con gli altri server\n"));
 	
 	while(currentServer != NULL){//finché vi sono server salvati
 		if(pthread_create(&threadId, NULL, connectionToServer, currentServer) != 0){//crea un thread
 			perror("errore thread");
 		} else {
-			pthread_join(threadId, NULL);
+			//pthread_join(threadId, NULL);
 		}
-		write(STDOUT_FILENO, "\nConnessione stabilita con:", sizeof("\nConnessione stabilita con:"));
-		inet_ntop(AF_INET, &(currentServer->address.sin_addr), buffer, INET_ADDRSTRLEN);
-		write(STDOUT_FILENO, buffer, strlen(buffer));
-		write(STDOUT_FILENO, ":", sizeof(":"));
-		sprintf(buffer, "%d", ntohs(currentServer->address.sin_port));
-		write(STDOUT_FILENO, buffer, strlen(buffer));
-		write(STDOUT_FILENO, "\n", sizeof("\n"));
 		lastServer = currentServer;
 		currentServer = currentServer->next;
 		lastServer->next = currentServer;
 	}
-	write(STDOUT_FILENO, CLEAR_SCREEN_ANSI, 12);
 	write(STDOUT_FILENO, "\nStabilite connessioni con tutti i server\n", sizeof("\nStabilite connessioni con tutti i server\n"));
 }
 
@@ -185,7 +198,9 @@ void createConnection(){
 void *connectionToServer(void *server){
 	int connectResult; //utile al controllo errori sulle connessioni
 	char* buffer = (char*) malloc (BUFFSIZE * sizeof(char *));//buffer in lettura
+	char* response = (char*) malloc (BUFFSIZE * sizeof(char *));
 	struct Server * currentServer = (struct Server *) server;
+	struct CommandStructure responseStructure;
 
 	write(STDOUT_FILENO, "\ntentativo di connessione a:", sizeof("\ntentativo di connessione a:"));
 	inet_ntop(AF_INET, &(currentServer->address.sin_addr), buffer, INET_ADDRSTRLEN);
@@ -193,24 +208,33 @@ void *connectionToServer(void *server){
 	write(STDOUT_FILENO, ":", sizeof(":"));
 	sprintf(buffer, "%d", ntohs(currentServer->address.sin_port));
 	write(STDOUT_FILENO, buffer, strlen(buffer));
-	//connessione al socket assegnato in input
+
+	//connessione al server assegnato in input
 	currentServer->socketDescriptor = socket(AF_INET, SOCK_STREAM, 0);//socket tcp tramite stream di dati, connection-oriented
-    connectResult = connect(currentServer->socketDescriptor, (struct sockaddr *)&currentServer->address, sizeof(currentServer->address)); //connessione
+    //tentativo di creazione della connessione
+	connectResult = connect(currentServer->socketDescriptor, (struct sockaddr *)&currentServer->address, sizeof(currentServer->address)); //connessione
 	while(connectResult != 0){ //finché la connessione non è staiblita
-		write(STDOUT_FILENO, "\nconnessione non riuscita, nuovo tentativo\n", sizeof("\nconnessione non riuscita, nuovo tentativo\n"));
-		sleep(2);
+		write(STDOUT_FILENO, "\nConnessione non riuscita, nuovo tentativo\n", sizeof("\nConnessione non riuscita, nuovo tentativo\n"));
+		sleep(4);
 		connectResult = connect(currentServer->socketDescriptor, (struct sockaddr *)&currentServer->address, sizeof(currentServer->address)); //connessione
 	}
-	write(STDOUT_FILENO, "\nConnessione stabilita con:", sizeof("\nConnessione stabilita con:"));
-	inet_ntop(AF_INET, &(currentServer->address.sin_addr), buffer, INET_ADDRSTRLEN);
-	write(STDOUT_FILENO, buffer, strlen(buffer));
-	write(STDOUT_FILENO, ":", sizeof(":"));
-	sprintf(buffer, "%d", ntohs(currentServer->address.sin_port));
-	write(STDOUT_FILENO, buffer, strlen(buffer));
-	write(STDOUT_FILENO, "  ", sizeof("   "));
-	sprintf(buffer, "%d", currentServer->socketDescriptor);
-	write(STDOUT_FILENO, buffer, strlen(buffer));
-	write(STDOUT_FILENO, "\n", sizeof("\n"));
+	if (connectResult == 0){
+		system("clear");
+		write(currentServer->socketDescriptor, HANDSHAKE, sizeof(HANDSHAKE));//invio dell'handshake
+		response = readFromPeer(currentServer->socketDescriptor);
+		responseStructure = getCommandStructure(response);
+
+		if (strcmp(responseStructure.type, "hands") == 0){
+			write(STDOUT_FILENO, "\nConnessione stabilita con:", sizeof("\nConnessione stabilita con:"));
+			inet_ntop(AF_INET, &(currentServer->address.sin_addr), buffer, INET_ADDRSTRLEN);
+			write(STDOUT_FILENO, buffer, strlen(buffer));
+			write(STDOUT_FILENO, ":", sizeof(":"));
+			sprintf(buffer, "%d", ntohs(currentServer->address.sin_port));
+			write(STDOUT_FILENO, buffer, strlen(buffer));
+			write(STDOUT_FILENO, "\n", sizeof("\n"));
+		}
+		
+	}
 }
 
 //ANCHOR runServer
@@ -221,6 +245,10 @@ pthread_t runServer(int port){
 	socklen_t dimaddcl = sizeof(claddress);
 	char * sup = (char *) malloc(BUFFSIZE * sizeof(char *));
 	int socketDescriptor;
+	
+	write(STDOUT_FILENO, CLEAR_SCREEN_ANSI, 12);
+	write(STDOUT_FILENO, "--- Inizio fase di Start-up del server ---\n", sizeof("--- Inizio fase di Start-up del server ---\n"));
+	write(STDOUT_FILENO, "\nApertura del socket in ricezione...\n", sizeof("\nApertura del socket in ricezione...\n"));
 
 	address.sin_family = AF_INET;
 	address.sin_port = htons(port);
@@ -233,7 +261,7 @@ pthread_t runServer(int port){
 	}
 	listen(sd, 20); // rende il servizio raggiungibile
 
-	write(STDOUT_FILENO, "listening...\n", sizeof("listening...\n"));
+	write(STDOUT_FILENO, "Socket aperto...\n", sizeof("Socket aperto...\n"));
 
 	pthread_t threadId;
 	int exitCondition = 1;
@@ -243,7 +271,17 @@ pthread_t runServer(int port){
 		
 		socketDescriptor = accept(sd, (struct sockaddr *) NULL, NULL);// estrae una richieta di connessione
 		if (socketDescriptor>1) { //in caso l'accettazione sia andata a buon fine
+			
 			write(STDOUT_FILENO, "accettata\n", sizeof("accettata\n"));
+			int add = getpeername(socketDescriptor, (struct sockaddr *)&claddress, &dimaddcl);
+			strcpy (sup, inet_ntoa(claddress.sin_addr));
+			write(STDOUT_FILENO, "Connessione accettata da: ", sizeof("connessione accettata da:"));
+			write(STDOUT_FILENO, sup, strlen(sup));
+			write(STDOUT_FILENO, ":", sizeof(":"));
+			sprintf(sup, "%d", ntohs(claddress.sin_port));
+			write(STDOUT_FILENO, sup, strlen(sup));
+			write(STDOUT_FILENO, "\n", sizeof("\n"));
+
 			if(pthread_create(&threadId, NULL, acceptConnection, &socketDescriptor) != 0){//crea un thread
 					perror("errore thread");
 			} else {
@@ -251,6 +289,40 @@ pthread_t runServer(int port){
 			}
 		}
 	}
+}
+
+char * readFromPeer(int socketDescriptor){
+	char * messaggio = (char *) malloc(BUFFSIZE * sizeof(char *));
+	char * buf = (char *) malloc(BUFFSIZE * sizeof(char *));
+	char * sup = (char *) malloc(BUFFSIZE * sizeof(char *));
+	int exitCondition = 1;
+	int r = 0;
+	int size = 0;
+	int sumSize = 0;
+
+	while (exitCondition == 1) {
+		r = read (socketDescriptor, buf, BUFFSIZE);
+		strcpy(sup, buf);
+		size = atoi(strtok(sup, ":"));
+		if (size == r){
+			strcpy(messaggio, buf);
+			exitCondition = 0;
+		} else if( size < r){
+			strncpy(messaggio, buf, size);
+			exitCondition = 0;
+		} else {
+			sumSize = r;
+			while ((size > sumSize) && (r > 0)){
+				r = read (socketDescriptor, buf, 128);
+				sumSize += r;
+				strncpy(sup, buf, size - (r-1));
+				strcat(messaggio, sup);
+			}
+			exitCondition = 0;
+		}
+	}
+	free(buf);
+	return messaggio;
 }
 //ANCHOR acceptConnection
 //accetta le connessioni in attesa
@@ -263,97 +335,107 @@ void *acceptConnection(void *arg){
 	int exitCondition = 1;
 	int *socketDescriptor = (int *) arg;
 	
-	int add = getsockname(*socketDescriptor, (struct sockaddr *)&claddress, &dimaddcl);
-	strcpy (sup, inet_ntoa(claddress.sin_addr));
-	write(STDOUT_FILENO, "Connessione accettata da: ", sizeof("connessione accettata da:"));
-	write(STDOUT_FILENO, sup, strlen(sup));
-	write(STDOUT_FILENO, ":", sizeof(":"));
-	sprintf(sup, "%d", ntohs(claddress.sin_port));
-	write(STDOUT_FILENO, sup, strlen(sup));
-	write(STDOUT_FILENO, "\n", sizeof("\n"));
-	//! tentativo di lettura START
-	while (exitCondition == 1) {
-		int r = read (*socketDescriptor, buf, BUFFSIZE);
-		strcpy(sup, buf);
-		int size = atoi(strtok(sup, ":"));
-		write(STDOUT_FILENO, buf, r);
-		if (size == r){
-			write(STDOUT_FILENO, "dimensione corretta", sizeof("dimensione corretta"));
-			strcpy(messaggio, buf);
+	buf = readFromPeer(*socketDescriptor);
+	struct CommandStructure command = getCommandStructure(buf);
 
-		} else if( size < r){
-			strncpy(messaggio, buf, size);
-
+	if(strcmp(command.type, "req") == 0){
+		if (handshakeCounter < serverNumber){
+			write(STDOUT_FILENO, "startup not finished", 21);
+			write(*socketDescriptor, STARTUPNOTFINISHED, 36);
 		} else {
-			int sumSize = r;
-			while ((size > sumSize) && (r > 0)){
-				r = read (*socketDescriptor, buf, 128);
-				sumSize += r;
-				strncpy(sup, buf, size - (r-1));
-				strcat(messaggio, sup);
-				write(STDOUT_FILENO, messaggio, size);
-						
-			}
-		}
-		//! tentativo di lettura END
-		struct CommandStructure command = getCommandStructure(buf);
-		if(strcmp(command.type, "req") == 0){
+			write(STDOUT_FILENO, "comando ricevuto", sizeof("comando ricevuto"));
+			sprintf(sup, "%d", *socketDescriptor);
+			write(STDOUT_FILENO, sup, strlen(sup));
 			exitCondition = executeCommands(command, *socketDescriptor);
-		} else {
-
 		}
-		free(buf);
-		free(messaggio);
-		//free(sup); //!questo rompe tutto//TODO Capire che cazzo vuole	
+	} else if(strcmp(command.type, "hands") == 0) {
+		write(STDOUT_FILENO, "\nHandshake Ricevuto\n", sizeof("\nHandshake Ricevuto\n"));
+		write(*socketDescriptor, HANDSHAKE, sizeof(HANDSHAKE));//invio dell'handshake
+		handshakeCounter ++;
+		//setHandShake(claddress.sin_port);
 	}
+
+	free(buf);
+
+	write(STDOUT_FILENO, "chiusura", sizeof("chiusura"));
 	close(*socketDescriptor);// chiude la connessione
 }
 
+void setHandShake(int port){
+	struct Server *currentServer = serverListHead;
+/*
+	while ((currentServer != NULL ) && (currentServer->address.sin_port != port )){
+		currentServer = currentServer->next;
+	}
+	if (currentServer->address.sin_port == port){*/
+		write(STDOUT_FILENO, "handshake contato", sizeof("handshake contato"));
+		currentServer->handShakeReceived = 1;
+		handshakeCounter ++;
+//	}
+	write(STDOUT_FILENO, "\nHandshake aggiunto\n", sizeof("\nHandshake aggiunto\n"));
+	return;
+}
 
-void sendResponse(char* response, int socketDescriptor){
-	char * messaggio = (char *) malloc (BUFFSIZE *sizeof(char));
-	write(STDOUT_FILENO, "\ninvio risposta\n", sizeof("\ninvio risposta\n"));
-	//calcolo della dimensione del messaggio
-    sprintf(messaggio, "%ld", strlen(response)); //salvo la dimensione del restante messaggio in una stringa
-    int dim = strlen(response) + strlen(messaggio); //sommo il numero di caratteri
-    sprintf(messaggio, "%d", dim);//metto la somma in una stringa
-    
-	strcat(messaggio, response);//concateno il resto del messaggio alla dimensione
-    strcat(messaggio, "\n");
 
-	write(socketDescriptor, messaggio, dim); // sd1 identifica il client dal quale ha ricevuto il messaggio originale
-	write(STDOUT_FILENO, "\nRisposta inviata\n", sizeof("\nRisposta inviata\n"));
-	free(messaggio);
+void sendResponse(char* response, int socketDescriptor, int resoult){
+	char * sup = (char *) malloc(BUFFSIZE * sizeof(char *));
+	if (resoult == 1){
+		sprintf(sup, "%d", socketDescriptor);
+		write(STDOUT_FILENO, sup, strlen(sup));
+
+		char * messaggio = (char *) malloc (BUFFSIZE *sizeof(char));
+		write(STDOUT_FILENO, "\ninvio risposta\n", sizeof("\ninvio risposta\n"));
+		//calcolo della dimensione del messaggio
+		sprintf(messaggio, "%ld", strlen(response)); //salvo la dimensione del restante messaggio in una stringa
+		int dim = strlen(response) + strlen(messaggio); //sommo il numero di caratteri
+		sprintf(messaggio, "%d", dim);//metto la somma in una stringa
+		
+		strcat(messaggio, response);//concateno il resto del messaggio alla dimensione
+		strcat(messaggio, "\n");
+
+		write(socketDescriptor, messaggio, dim); // sd1 identifica il client dal quale ha ricevuto il messaggio originale
+		write(STDOUT_FILENO, "\nRisposta inviata\n", sizeof("\nRisposta inviata\n"));
+		free(messaggio);
+	} else {
+		write(socketDescriptor, DATANOTMATCHING, 39);
+	}
+	
 } 
 
 
 //ANCHOR executeCommands
 int executeCommands(struct CommandStructure command, int socketDescriptor){
-	//struct CommandStructure command = getCommandStructure(buf);
-	write(STDOUT_FILENO, "@@@executeCommmands\n\n", sizeof("@@@executeCommmands\n\n"));
 	int isSuccessInt = 0;
+	int resoult = 1;
 	char *response = (char *) malloc (BUFFSIZE *sizeof(char)); 
+	struct Node* node;
+	char * sup = (char *) malloc(BUFFSIZE * sizeof(char *));
+
+	system("clear");
+	write(STDOUT_FILENO, "Esecuzione Comando\n\n", sizeof("Esecuzione Comando\n\n"));
+
 	strcat(response, ":s:");
 	strcat(response, "res:");
-	struct Node* node;
+
+	sprintf(sup, "%d", socketDescriptor);
+
 	switch (getInvokedCommand(command.command)) {
 		case STORE:
 			write(STDOUT_FILENO, "\n@STORE CASE\n", sizeof("@STORE CASE\n"));
-			strcat(response, "STORE RESPONSE");
 			isSuccessInt = store(atoi(command.key), atoi(command.value));
 			if (isSuccessInt == 1) {
-				strcat(response, "success");
+				strcat(response, "success:");
 				if (strcmp(command.sender, "c") == 0){
-					forwardMessage(command);
+					resoult = forwardMessage(command);
 				}
 			}else{
-				strcat(response, "ERROR: KEY ALREADY EXISTS");
+				strcat(response, "error:");
+				strcat(response, "KEY ALREADY EXISTS");
 			}
-			//strcat(response, "\n\n");
 			break;
 		case LIST:                         // TODO IMPLEMENTARE LA VERA FUNZIONE LIST
 			write(STDOUT_FILENO, "\n@LIST CASE\n", sizeof("@LIST CASE\n"));
-			strcat(response, "LIST RESPONSE");
+			strcat(response, "list:");
 			char *list = printList(head);
 			strcat(response, list);
 			//strcat(response, "\n\n");
@@ -362,8 +444,8 @@ int executeCommands(struct CommandStructure command, int socketDescriptor){
 		case SEARCH:                       // TODO IMPLEMENTARE LA VERA FUNZIONE SEARCH
 			write(STDOUT_FILENO, "\n@SEARCH CASE\n", sizeof("@SEARCH CASE\n"));
 			node = searchLocal(head, atoi(command.key));
-			strcat(response, "SEARCH RESPONSE");
 			if(node != NULL) {
+				strcat(response, "success:");
 				char* key = intToString(node->key);
 				char* value = intToString(node->value);
 				strcat(response, key);
@@ -372,38 +454,39 @@ int executeCommands(struct CommandStructure command, int socketDescriptor){
 				free(key);
 				free(value);
 				if (strcmp(command.sender, "c") == 0){
-					forwardMessage(command);
+					resoult = forwardMessage(command);
 				}
 			}else{
+				strcat(response, "error:");
 				strcat(response, "chiave non trovata");
 			}
-			//strcat(response, "\n\n");
-			write(STDOUT_FILENO, "\n\n", sizeof("\n\n"));			
 			break;
-		case EXIT:                         // TODO PERCHÉ NON CI VA MAI?
+		case EXIT:                        // TODO PERCHÉ NON CI VA MAI?
+			write(STDOUT_FILENO, command.message, strlen(command.message));
+			write(socketDescriptor, CLOSING, 29);
 			close(sd1); // chiude la connessione
-			return 0;
-			break;
+			close(sd);
+			exit(1);
+			//break;
 		case CORRUPT:   
 			// TODO IMPLEMENTARE LA VERA FUNZIONE CORRUPT
 			write(STDOUT_FILENO, "\n@CORRUPT CASE\n", sizeof("@CORRUPT CASE\n"));
-			strcat(response, "CORRUPT RESPONSE");
 			node = corrupt(atoi(command.key), atoi(command.value));
 			if (node != NULL) {
+				strcat(response, "success:");
 				strcat(response, "KEY REPLACED SUCCESSFULLY");
 			}else{
-				strcat(response, "ERROR: KEY NOT EXISTS");
+				strcat(response, "error:");
+				strcat(response, "KEY DOESN'T EXIST");
 			}
-			//strcat(response, "\n\n");
-
 			break;
 		case COMMANDO_NOT_FOUND:
-			write(STDOUT_FILENO, "Command not found", sizeof("Command not found"));
+			strcat(response, "error:");
+			strcat(response, "COMMAND NOT FOUND");
 			break;
 	}
 	
-	write(STDOUT_FILENO, response, strlen(response));
-	sendResponse(response, socketDescriptor);
+	sendResponse(response, socketDescriptor, resoult);
 
 	//free(response);
 	return 1;
@@ -454,15 +537,14 @@ struct CommandStructure getCommandStructure (char *buf){
 				commandStr.value = p;
 			}else
 			{
-				write(STDOUT_FILENO, "\n\nsono a 7 quindi metto p a NULL\n\n ", sizeof("\n\nsono a 6 quindi metto p a NULL\n\n "));
 				//p = NULL; //!va in sig fault se decommentato
 				break;
 			}
-		}else {
+		}else if (strcmp(commandStr.type, "res") == 0){
 			if (counter == 4)
 			{
 				p = strtok (NULL, ":-");
-				commandStr.res = p;
+				commandStr.resoult = p;
 
 			}else if (counter == 5)
 			{
@@ -474,12 +556,14 @@ struct CommandStructure getCommandStructure (char *buf){
 				break;
 			}
 
+		} else {
+			break;
 		}
 		 	
 		
 	}
-	printCommandStructure(commandStr);
-	write(STDOUT_FILENO, "\n\n", sizeof("\n\n"));
+	//	printCommandStructure(commandStr);
+	//write(STDOUT_FILENO, "\n\n", sizeof("\n\n"));
 	return commandStr;
 }
 
@@ -637,6 +721,17 @@ struct Node* searchLocal(struct Node* head, int key){
 //ANCHOR handler
 void handler (int sig){
 	if (sig==SIGINT) {
+		struct CommandStructure Exit;
+		Exit.sizeOfMessage = 34;
+		Exit.sender = "s";
+		Exit.type = "req";
+		Exit.message = "chiusura del Server";
+		Exit.command = "EXIT";
+		Exit.key = (char *)NULL;
+		Exit.value = (char *)NULL;
+		write(STDOUT_FILENO, "\nchiusura del server", sizeof("\nchiusura del server"));
+		forwardMessage(Exit);
+		write(STDOUT_FILENO, "pipino", sizeof("pipino"));
 		close(sd1);// chiude la connessione
 
 		close(sd);// rende il servizio non raggiungibile
@@ -644,98 +739,99 @@ void handler (int sig){
 	}
 }
 
-void forwardMessage(struct CommandStructure command){
+int forwardMessage(struct CommandStructure command){
 	char * message = (char *) malloc (BUFFSIZE * sizeof(char *));
 	char * sup = (char *) malloc (sizeof(int));
 	char * sup1 = (char *) malloc (sizeof(int));
 	struct Server *currentServer = serverListHead;
 	struct Forward fwdMessage;
+	struct ForwardList *fwdList;
+	struct ForwardList *currFwdList;
+	int connectResult; //utile al controllo errori sulle connessioni
+
 	pthread_t threadId;
 	fwdMessage.message = (char *) malloc(BUFFSIZE * sizeof(char *));
+	fwdList = (struct ForwardList *) malloc(BUFFSIZE * sizeof(struct ForwardList*));
+	currFwdList = fwdList;
+	int resoult = 1;
 
-
+	write(STDOUT_FILENO, "prova", sizeof("prova"));
 	sprintf(sup, "%d", command.sizeOfMessage);
 	strcat(fwdMessage.message, sup);
 	strcat(fwdMessage.message, ":s:");
 	strcat(fwdMessage.message, "req:");
 	strcat(fwdMessage.message, command.command);
-	//if (command.key != NULL){
+	if (command.key != (char *)NULL){
+		write(STDOUT_FILENO, "prova", sizeof("prova"));
 		strcat(fwdMessage.message, "-");
 		strcat(fwdMessage.message, command.key);
-//	}
+	}
 	
-//	if(command.value != NULL){
+	if(command.value != (char *)NULL){
+		write(STDOUT_FILENO, "prova", sizeof("prova"));
 		strcat(fwdMessage.message, "-");
 		strcat(fwdMessage.message, command.value);
-//	}
+	}
 	
 
 	while(currentServer != NULL){
-		write(STDOUT_FILENO, "\nInoltro del comando\n", sizeof("\nInoltro del comando\n"));
+		write(STDOUT_FILENO, "\nInoltro del comando a ", sizeof("\nInoltro del comando a "));
 		sprintf (sup1, "%d", ntohs(currentServer->address.sin_port));
 		write(STDOUT_FILENO, sup1, sizeof(int));
-		write(STDOUT_FILENO, "  ", sizeof("  "));
-		
-
-
-		fwdMessage.socketDescriptor = currentServer->socketDescriptor;
-		//strcpy(fwdMessage.message, message);
+		write(STDOUT_FILENO, "\n", sizeof("  "));
+		fwdMessage.server = currentServer;
 		fwdMessage.size = command.sizeOfMessage;
 
-		sprintf (sup1, "%d", fwdMessage.socketDescriptor);
-		write(STDOUT_FILENO, sup1, sizeof(int));
-		write(STDOUT_FILENO, " \n", sizeof(" \n"));
 
 		if(pthread_create(&threadId, NULL, forwardToServers, &fwdMessage) != 0){//crea un thread
 			perror("errore thread");
 		} else {
 			pthread_join(threadId, NULL);
+			currFwdList->fwd = fwdMessage;
 			currentServer = currentServer->next;
+			if (currentServer != NULL){
+				currFwdList->next = (struct ForwardList *) malloc(BUFFSIZE * sizeof(struct ForwardList*));
+				currFwdList = currFwdList->next;
+			}
 		}
-			
 	}
-	return;
+	resoult = checkForwardResult(fwdList, command.command);
+	return resoult;
+}
+
+int checkForwardResult(struct ForwardList *forwardList, char *command){
+	struct ForwardList *currFwdList = forwardList;
+	int result = 1;
+	if (strcmp(command, "LIST") == 0){
+		write(STDOUT_FILENO, "il controllo di list è un casino, poi lo faccio", sizeof("il controllo di list è un casino, poi lo faccio"));
+	} else {
+		while (currFwdList != NULL){
+			if (strcmp(currFwdList->fwd.response.resoult, "error") == 0){
+				result == 0;
+			}
+			currFwdList = currFwdList->next;
+		}
+	}
+	return result;
 }
 
 void *forwardToServers(void *arg){//bisogna definire una struct con il messaggio, l'sd e la risposta del server stesso
 	struct Forward *fwd = (struct Forward *)arg;
-	char * messaggio = (char *) malloc(BUFFSIZE * sizeof(char *));
-	char * buf = (char *) malloc(BUFFSIZE * sizeof(char *));
-	char * sup = (char *) malloc(BUFFSIZE * sizeof(char *));
+	char * response = (char *) malloc(BUFFSIZE * sizeof(char *));
 	int exitCondition = 1;
+	int connectResult;
+	fwd->server->socketDescriptor = socket(AF_INET, SOCK_STREAM, 0);//socket tcp tramite stream di dati, connection-oriented
+    //tentativo di creazione della connessione
+	connectResult = connect(fwd->server->socketDescriptor, (struct sockaddr *)&fwd->server->address, sizeof(fwd->server->address)); //connessione
 
 
-	write(fwd->socketDescriptor, fwd->message, fwd->size);
+	write(fwd->server->socketDescriptor, fwd->message, fwd->size);
 	write(STDOUT_FILENO, fwd->message, fwd->size);
 	write(STDOUT_FILENO, "\n", sizeof("\n"));
-	/*aspetta la risposta
-	//! tentativo di lettura START
-	while (exitCondition == 1){
-		write(STDOUT_FILENO, "\nAttesa di risposta...", sizeof("\nAttesa di risposta..."));
-		int r = read (fwd->socketDescriptor, buf, BUFFSIZE);
-		strcpy(sup, buf);
-		int size = atoi(strtok(sup, ":"));
-		write(STDOUT_FILENO, buf, r);
-		if (size == r){
-			write(STDOUT_FILENO, "dimensione corretta", sizeof("dimensione corretta"));
-			strcpy(messaggio, buf);
-			exitCondition = 0;
-
-		} else if( size < r){
-			strncpy(messaggio, buf, size);
-			exitCondition = 0;
-
-		} else {
-			int sumSize = r;
-			while ((size > sumSize) && (r > 0)){
-				r = read (fwd->socketDescriptor, buf, 128);
-				sumSize += r;
-				strncpy(sup, buf, size - (r-1));
-				strcat(messaggio, sup);
-				write(STDOUT_FILENO, messaggio, size);
-						
-			}
-		}
-	}*/
+	//aspetta la risposta
+	response = readFromPeer(fwd->server->socketDescriptor);
+	write(STDOUT_FILENO, "risposta ricevuta", 18);
 	//capire come inviare il ris dei confronti
+	fwd->response = getCommandStructure(response);
+	write(STDOUT_FILENO, "struct ricevuta", 18);
 }

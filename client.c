@@ -17,9 +17,20 @@ int checkCorrectCommand(char*);
 //funzione che crea il messaggio "comando-param1-param2" da inviare al server
 char* createMessage(int, const char*[], int*);
 // funzione per la lettura del messaggio inviato dal server
-void readFromServer(int sd);
+void readFromServer(int);
+//funzione che spacchetta il messaggio di risposta e la stampa a video
+void printMessage(char *);
 
-int main( int argc, const char* argv[]){
+
+struct ResponseStructure {
+	int sizeOfMessage;
+	char *sender;
+	char *type;
+	char *message;
+	char *resoult;
+};
+
+int main(int argc, const char* argv[]){
     
     int sd, sd1; //socket descriptor
     struct sockaddr_in address; //indirizzo del socket
@@ -63,17 +74,19 @@ int main( int argc, const char* argv[]){
         sleep(1);
         connectRes = connect(sd, (struct sockaddr *)&address, sizeof(address)); //connessiones
     } 
-        //Invio del messaggio al server    
-        char* createdMessage = createMessage(argc, argv, &messageSize);
-        strcpy(message, createdMessage);
+    //Invio del messaggio al server    
+    char* createdMessage = createMessage(argc, argv, &messageSize);
+    strcpy(message, createdMessage);
 
-        write(sd, message, messageSize);
-        write(STDOUT_FILENO, "messaggio inviato\n", sizeof("messaggio inviato\n"));
-        readFromServer(sd);
-        
-        free(message);
-        free(createdMessage);
-        close(sd);// chiusura del socket
+    write(sd, message, messageSize);
+    write(STDOUT_FILENO, "messaggio inviato\n", sizeof("messaggio inviato\n"));
+    readFromServer(sd);
+    
+    free(message);
+    free(createdMessage);
+
+    write(STDOUT_FILENO, "\n\n Chiusura del software", sizeof("\n\n Chiusura del software"));
+    close(sd);// chiusura del socket
    
 
     return 0;
@@ -89,10 +102,7 @@ void readFromServer(int sd){
 	r = read (sd, buf, 128);
         strcpy(sup, buf);
         int size = atoi(strtok(sup, ":"));
-        write(STDOUT_FILENO, buf, size);
-        printf("\n\nsize %d, r %d\n\n", size, r);
         if (size == r){
-            write(STDOUT_FILENO, "dimensione corretta", sizeof("dimensione corretta"));
             strcpy(messaggio, buf);
 
         } else if( size < r){
@@ -104,13 +114,11 @@ void readFromServer(int sd){
                 r = read (sd, buf, 128);
                 sumSize += r;
                 strncpy(sup, buf, size - (r-1));
-                strcat(messaggio, sup);
-                write(STDOUT_FILENO, messaggio, size);
-                printf("\n\nsumsize %d, r %d\n\n", sumSize, r);
-                         
+                strcat(messaggio, sup);      
             }
         }
 
+    printMessage(messaggio);
     free(buf);
     free(messaggio);
     free(sup);
@@ -187,4 +195,50 @@ char* createMessage(int argc, const char* argv[], int *size){
 
     free(buf);
     return messaggio;
+}
+
+void printMessage(char *response){
+	struct ResponseStructure responseStruct;
+	char *p;
+	char *sizeOfMessageStr;
+    int counter = 0;
+
+
+	p = strtok (response,":-");
+	
+	while (p!= NULL){
+		counter++;
+		if (counter == 1){
+			sizeOfMessageStr = p;
+			responseStruct.sizeOfMessage = atoi(sizeOfMessageStr);
+		}else if (counter == 2)
+		{
+			p = strtok (NULL, ":-");
+			responseStruct.sender = p;
+		}
+		else if (counter == 3)
+		{
+			p = strtok (NULL, ":-");
+			responseStruct.type = p;
+		
+		}
+        else if (counter == 4)
+        {
+            p = strtok (NULL, ":-");
+            responseStruct.resoult = p;
+
+        }else if (counter == 5)
+        {
+            p = strtok (NULL, ":-");
+            responseStruct.message = p;
+        }else
+        {
+            //p = NULL; //!va in sig fault se decommentato
+            break;
+        }
+	}
+    system("clear");
+    write(STDOUT_FILENO, "\nRisposta: \n", sizeof("\nRisposta: \n"));
+    write(STDOUT_FILENO, responseStruct.resoult, strlen(responseStruct.resoult));   
+    write(STDOUT_FILENO, responseStruct.message, strlen(responseStruct.message));
 }
