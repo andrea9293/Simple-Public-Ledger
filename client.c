@@ -21,7 +21,7 @@ void readFromServer(int);
 //funzione che spacchetta il messaggio di risposta e la stampa a video
 void printMessage(char *);
 
-
+//struttura della risposta
 struct ResponseStructure {
 	int sizeOfMessage;
 	char *sender;
@@ -74,13 +74,13 @@ int main(int argc, const char* argv[]){
         sleep(1);
         connectRes = connect(sd, (struct sockaddr *)&address, sizeof(address)); //connessiones
     } 
-    //Invio del messaggio al server    
+    //creazione del messaggio per il server    
     char* createdMessage = createMessage(argc, argv, &messageSize);
     strcpy(message, createdMessage);
 
-    write(sd, message, messageSize);
-    write(STDOUT_FILENO, "messaggio inviato\n", sizeof("messaggio inviato\n"));
-    readFromServer(sd);
+    write(sd, message, messageSize);//invio del messaggio
+    write(STDOUT_FILENO, "Messaggio inviato\n", sizeof("Messaggio inviato\n"));
+    readFromServer(sd);//legge la risposta
     
     free(message);
     free(createdMessage);
@@ -92,36 +92,33 @@ int main(int argc, const char* argv[]){
     return 0;
 }
 
-void readFromServer(int sd){
+void readFromServer(int sd){//legge dal server
     int r;
-    char * buf = (char *) malloc( BUFFSIZE * sizeof(char *));
+    char * buffer = (char *) malloc( BUFFSIZE * sizeof(char *));
     char * messaggio = (char *) malloc( BUFFSIZE * sizeof(char *));
-    char * sup = (char *) malloc (BUFFSIZE *sizeof(char *));
+    char * support = (char *) malloc (BUFFSIZE *sizeof(char *));
 
-	//! tentativo di lettura START
-	r = read (sd, buf, 128);
-        strcpy(sup, buf);
-        int size = atoi(strtok(sup, ":"));
-        if (size == r){
-            strcpy(messaggio, buf);
-
-        } else if( size < r){
-            strncpy(messaggio, buf, size);
-
-        } else {
-            int sumSize = r;
-            while ((size > sumSize) && (r > 0)){
-                r = read (sd, buf, 128);
-                sumSize += r;
-                strncpy(sup, buf, size - (r-1));
-                strcat(messaggio, sup);      
-            }
+	r = read (sd, buffer, 128);//legge
+    strcpy(support, buffer);
+    int size = atoi(strtok(support, ":"));//ottiene la dimensione inviata nel messaggio
+    if (size == r){//in caso la dimensione ricevuta sia uguale ai caratteri letti
+        strcpy(messaggio, buffer);//copia in messaggio
+    } else if( size < r){//in caso siano stati letti più caratteri
+        strncpy(messaggio, buffer, size);//copia la substring
+    } else {
+        int sumSize = r;
+        while ((size > sumSize) && (r > 0)){//altrimenti continua a leggere finché il numero di caratteri lettinon corrisponda
+            r = read (sd, buffer, 128);
+            sumSize += r;
+            strncpy(support, buffer, size - (r-1));
+            strcat(messaggio, support);      
         }
+    }
 
-    printMessage(messaggio);
-    free(buf);
+    printMessage(messaggio);//stampa il messaggio
+    free(buffer);
     free(messaggio);
-    free(sup);
+    free(support);
 }
 
 //controlla che siano stati dati abbastanza parametri per il comando (torna 1 in caso di errore)
@@ -156,14 +153,7 @@ int checkCorrectCommand(char* command){
 
     return 1;
 }
-
-/* 
-NOTE il protocollo funziona con un messaggio strutturato come segue
-<size>:<sender>:<command-par1-par2>
-ad esempio
-8:c:LIST
-*/
-char* createMessage(int argc, const char* argv[], int *size){
+char* createMessage(int argc, const char* argv[], int *size){//creazione del messaggio
     char * buf = (char *) malloc (BUFFSIZE *sizeof(char)); 
     char * messaggio = (char *) malloc (BUFFSIZE *sizeof(char));
     
@@ -197,46 +187,47 @@ char* createMessage(int argc, const char* argv[], int *size){
     return messaggio;
 }
 
-void printMessage(char *response){
+void printMessage(char *response){//stampa del messaggio ricevuto
 	struct ResponseStructure responseStruct;
-	char *p;
+	char *part;
 	char *sizeOfMessageStr;
     int counter = 0;
 
-
-	p = strtok (response,":-");
+    //scompone il messaggio
+	part = strtok (response,":-");
 	
-	while (p!= NULL){
+	while (part!= NULL){
 		counter++;
 		if (counter == 1){
-			sizeOfMessageStr = p;
+			sizeOfMessageStr = part;
 			responseStruct.sizeOfMessage = atoi(sizeOfMessageStr);
 		}else if (counter == 2)
 		{
-			p = strtok (NULL, ":-");
-			responseStruct.sender = p;
+			part = strtok (NULL, ":-");
+			responseStruct.sender = part;
 		}
 		else if (counter == 3)
 		{
-			p = strtok (NULL, ":-");
-			responseStruct.type = p;
+			part = strtok (NULL, ":-");
+			responseStruct.type = part;
 		
 		}
         else if (counter == 4)
         {
-            p = strtok (NULL, ":-");
-            responseStruct.resoult = p;
+            part = strtok (NULL, ":-");
+            responseStruct.resoult = part;
 
         }else if (counter == 5)
         {
-            p = strtok (NULL, ":-");
-            responseStruct.message = p;
+            part = strtok (NULL, ":-");
+            responseStruct.message = part;
         }else
         {
-            //p = NULL; //!va in sig fault se decommentato
+            
             break;
         }
 	}
+    //stampa del risultato e del messaggio
     system("clear");
     write(STDOUT_FILENO, "\nRisposta: \n", sizeof("\nRisposta: \n"));
     write(STDOUT_FILENO, responseStruct.resoult, strlen(responseStruct.resoult));   
