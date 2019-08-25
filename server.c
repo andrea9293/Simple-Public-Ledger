@@ -357,6 +357,10 @@ void *acceptConnection(void *arg){
 		write(STDOUT_FILENO, "\nHandshake Ricevuto\n", sizeof("\nHandshake Ricevuto\n"));
 		write(*socketDescriptor, HANDSHAKE, sizeof(HANDSHAKE));//invio dell'handshake
 		handshakeCounter ++;
+		if (handshakeCounter == serverNumber){
+			system("clear");
+			write(STDOUT_FILENO, "Fase di Start-up completata", 28);
+		}
 		//setHandShake(claddress.sin_port);
 	}
 
@@ -391,7 +395,7 @@ void sendResponse(char* response, int socketDescriptor, int resoult){
 		
 		strcat(messaggio, response);//concateno il resto del messaggio alla dimensione
 		strcat(messaggio, "\n");
-
+		write(STDOUT_FILENO, messaggio, dim);
 		write(socketDescriptor, messaggio, dim); //invia la risposta
 		write(STDOUT_FILENO, "\nRisposta inviata\n", sizeof("\nRisposta inviata\n"));
 		free(messaggio);
@@ -408,7 +412,7 @@ int executeCommands(struct CommandStructure command, int socketDescriptor){
 	char *response = (char *) malloc (BUFFSIZE *sizeof(char)); 
 	struct Node* node;
 
-	write(STDOUT_FILENO, "Esecuzione Comando\n\n", sizeof("Esecuzione Comando\n\n"));
+	write(STDOUT_FILENO, "\nEsecuzione Comando\n\n", sizeof("\nEsecuzione Comando\n\n"));
 
 	//concatena una parte del comando
 	strcat(response, ":s:");
@@ -421,6 +425,7 @@ int executeCommands(struct CommandStructure command, int socketDescriptor){
 			isSuccessInt = store(atoi(command.key), atoi(command.value));
 			if (isSuccessInt == 1) {//in caso di successo
 				strcat(response, "success:");
+				strcat(response, "Successfully stored");
 				if (strcmp(command.sender, "c") == 0){//se la richiesta viene da un client
 					resoult = forwardMessage(command, response);//inoltra il comando
 				}
@@ -432,7 +437,7 @@ int executeCommands(struct CommandStructure command, int socketDescriptor){
 			break;
 		case LIST:
 			write(STDOUT_FILENO, "\n@LIST CASE\n", sizeof("@LIST CASE\n"));
-			strcat(response, "list:");//parametro di risultato specifico per la lista
+			strcat(response, "list:\n");//parametro di risultato specifico per la lista
 			char *list = printList(head); //valorizza il char con la lista
 			strcat(response, list);//concatena la lista alla risposta
 			free(list);
@@ -523,6 +528,8 @@ struct CommandStructure getCommandStructure (char *buf){
 				part = strtok (NULL, ":-");
 				commandStr.command = part;
 				if (strstr(commandStr.command, "LIST")){//se il comando è list non ci sono altri vlaori
+					commandStr.key = NULL;
+					commandStr.value = NULL;
 					break;
 				}
 
@@ -531,10 +538,11 @@ struct CommandStructure getCommandStructure (char *buf){
 				part = strtok (NULL, ":-");
 				commandStr.key = part;
 				if (strstr(commandStr.command, "SEARCH")){//se il comando è search c'è un solo valore
+					commandStr.value = NULL;
 					break;
 				}
 				
-			}else if (counter == 6)//sesto tocken
+			}else if (counter == 6)//sesto token
 			{
 				part = strtok (NULL, ":-");
 				commandStr.value = part;
@@ -554,10 +562,18 @@ struct CommandStructure getCommandStructure (char *buf){
 				commandStr.message = part;
 			}else//fine messaggio
 			{
+				commandStr.command = NULL;
+				commandStr.key = NULL;
+				commandStr.value = NULL;
 				break;
 			}
 
 		} else {//fine messaggio
+			commandStr.command = NULL;
+			commandStr.key = NULL;
+			commandStr.value = NULL;
+			commandStr.message = NULL;
+			commandStr.resoult = NULL;
 			break;
 		}
 		 	
@@ -756,25 +772,31 @@ int forwardMessage(struct CommandStructure command, char *response){//inoltro de
 	currFwdList = fwdList;
 	int resoult = 1;
 
+	write(STDOUT_FILENO, "\nPreparazione per l'inoltro dei messaggio\n", sizeof ("\nPreparazione per l'inostro dei messaggio\n"));
 	//crea il messaggio da inoltrare partendo da quello ricevuto 
 	sprintf(sizeString, "%d", command.sizeOfMessage);
 	strcat(fwdMessage.message, sizeString);
 	strcat(fwdMessage.message, ":s:");
 	strcat(fwdMessage.message, "req:");
 	strcat(fwdMessage.message, command.command);
-	if (command.key != (char *)NULL){//se vi è una key, nel comando la concatena
+	if (command.key != NULL){//se vi è una key, nel comando la concatena
 		strcat(fwdMessage.message, "-");
 		strcat(fwdMessage.message, command.key);
 	}
 	
-	if(command.value != (char *)NULL){//se vi è valore nel comando lo concatena
+	if(command.value != NULL){//se vi è valore nel comando lo concatena
 		strcat(fwdMessage.message, "-");
 		strcat(fwdMessage.message, command.value);
 	}
 	
 	//inserisce il risultato locale alla lista per i confronti
-	currFwdList->fwd.response = getCommandStructure(response);
-	currFwdList->fwd.server = selfPort;
+	
+	strcpy(message, "13");
+	strcat(message, response);
+	write(STDOUT_FILENO, message, strlen(message));
+	write(STDOUT_FILENO, response, strlen(response));
+	currFwdList->fwd.response = getCommandStructure(message);
+	//currFwdList->fwd.server->address.sin_port = selfPort;
 	currFwdList->next = (struct ForwardList *) malloc(BUFFSIZE * sizeof(struct ForwardList*));
 	currFwdList = currFwdList->next;
 

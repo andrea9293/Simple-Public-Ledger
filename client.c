@@ -85,7 +85,7 @@ int main(int argc, const char* argv[]){
     free(message);
     free(createdMessage);
 
-    write(STDOUT_FILENO, "\n\n Chiusura del software", sizeof("\n\n Chiusura del software"));
+    write(STDOUT_FILENO, "\n\nChiusura del software", sizeof("\n\nChiusura del software"));
     close(sd);// chiusura del socket
    
 
@@ -231,5 +231,6 @@ void printMessage(char *response){//stampa del messaggio ricevuto
     system("clear");
     write(STDOUT_FILENO, "\nRisposta: \n", sizeof("\nRisposta: \n"));
     write(STDOUT_FILENO, responseStruct.resoult, strlen(responseStruct.resoult));   
+    write(STDOUT_FILENO, ": ", sizeof(": "));
     write(STDOUT_FILENO, responseStruct.message, strlen(responseStruct.message));
 }
