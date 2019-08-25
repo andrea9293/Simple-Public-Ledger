@@ -749,7 +749,7 @@ void handler (int sig){//handler segnali
 		Exit.key = (char *)NULL;
 		Exit.value = (char *)NULL;
 		write(STDOUT_FILENO, "\nchiusura del server", sizeof("\nchiusura del server"));
-		forwardMessage(Exit, (char *)NULL);//chiama l'inoltro a tutti i server
+		forwardMessage(Exit, NULL);//chiama l'inoltro a tutti i server
 		close(sd1);// chiude la connessione
 
 		close(sd);// rende il servizio non raggiungibile
@@ -790,12 +790,13 @@ int forwardMessage(struct CommandStructure command, char *response){//inoltro de
 	}
 	
 	//inserisce il risultato locale alla lista per i confronti
-	
-	strcpy(message, "13");
-	strcat(message, response);
-	write(STDOUT_FILENO, message, strlen(message));
-	write(STDOUT_FILENO, response, strlen(response));
-	currFwdList->fwd.response = getCommandStructure(message);
+	if (response != NULL){
+		strcpy(message, "24");
+		strcat(message, response);
+		write(STDOUT_FILENO, message, strlen(message));
+		write(STDOUT_FILENO, response, strlen(response));
+		currFwdList->fwd.response = getCommandStructure(message);
+	}
 	//currFwdList->fwd.server->address.sin_port = selfPort;
 	currFwdList->next = (struct ForwardList *) malloc(BUFFSIZE * sizeof(struct ForwardList*));
 	currFwdList = currFwdList->next;
