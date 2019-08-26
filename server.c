@@ -54,7 +54,6 @@ struct CommandStructure {
 struct Server {
 	struct sockaddr_in address;
 	struct Server* next;
-	int handShakeReceived;
 	int socketDescriptor;
 };
 
@@ -78,19 +77,17 @@ void createConnection();//crea le connessioni con gli altri server
 void *connectionToServer(void *);//apre le connesisoni
 void *acceptConnection(void *);//accetta le connesisoni
 char *readFromPeer(int); //ritorna il messaggio letto dal socket
-void setHandShake(int);//setta l'handshake //?decidere se tenerla
 struct Node* storeLocal(struct Node*, int, int); //memorizza in locale i dati inviati tramite comando store
 char *printList(struct Node*);//stampa la lista locale //?serve?
 struct Node* searchLocal(struct Node*, int);//ricerca locale dei dati richiesti
 struct Node* initList(int, int);//inizializza la lista di dati locali
 enum functions getInvokedCommand(char*);//restituisce il tipo di comando inviato
 void handler (int);//handler per i segnali
-pthread_t runServer(int);//apre il socket in ricezione e apre un thread per ogni connessione accettata//?tipo ri di ritorno?
+void runServer(int);//apre il socket in ricezione e apre un thread per ogni connessione accettata
 int store(int, int);//funzione di store
 char *intToString(int);//conversione intero a stringa
 int executeCommands(struct CommandStructure, int);//esegue il comando arrivato dal client/server
 struct CommandStructure getCommandStructure (char *);//scompone il messaggio nelle sue parti
-void printCommandStructure(struct CommandStructure );//stampa il risultato della scomposizione //?toglierla?
 struct Node* corrupt(int, int);//esegue la funzione di corrupt
 int forwardMessage(struct CommandStructure, char *);//forward ai server
 void *forwardToServers(void *);//funzione per il thread che invia il messaggio ai vari server
@@ -244,7 +241,7 @@ void *connectionToServer(void *server){
 }
 
 //ANCHOR runServer
-pthread_t runServer(int port){
+void runServer(int port){
 	struct sockaddr_in address; //address del server
 	struct sockaddr_in claddress; //address del peer connesso
 	socklen_t dimaddcl = sizeof(claddress); //dimensione dell'address
@@ -366,21 +363,6 @@ void *acceptConnection(void *arg){
 
 	free(messaggio);
 	close(*socketDescriptor);// chiude la connessione
-}
-//?penso che si possa levare da mezzo
-void setHandShake(int port){
-	struct Server *currentServer = serverListHead;
-/*
-	while ((currentServer != NULL ) && (currentServer->address.sin_port != port )){
-		currentServer = currentServer->next;
-	}
-	if (currentServer->address.sin_port == port){*/
-		write(STDOUT_FILENO, "handshake contato", sizeof("handshake contato"));
-		currentServer->handShakeReceived = 1;
-		handshakeCounter ++;
-//	}
-	write(STDOUT_FILENO, "\nHandshake aggiunto\n", sizeof("\nHandshake aggiunto\n"));
-	return;
 }
 
 //invia la risposta in base al risultato del forward, se c'è stato
@@ -579,37 +561,7 @@ struct CommandStructure getCommandStructure (char *buf){
 		 	
 		
 	}
-	//write(STDOUT_FILENO, "\n\n", sizeof("\n\n"));
 	return commandStr;
-}
-
-//?credo si possa levare, anche perché andrebbe modificato per accettare risposte ecc
-void printCommandStructure(struct CommandStructure commandStr){
-	write(STDOUT_FILENO, "\n@@@printCommandStructure\n\n", sizeof("\n@@@printCommandStructure\n\n"));
-	char *sizeOfMessageStr = intToString(commandStr.sizeOfMessage);
-	write(STDOUT_FILENO, "\ncommandStr.sizeOfMessage: ", sizeof("\ncommandStr.sizeOfMessage: "));
-	write(STDOUT_FILENO, sizeOfMessageStr, strlen(sizeOfMessageStr));
-	free(sizeOfMessageStr);
-
-	write(STDOUT_FILENO, "\ncommandStr.sender: ", sizeof("\ncommandStr.sender: "));
-	write(STDOUT_FILENO, commandStr.sender, strlen(commandStr.sender));
-
-	write(STDOUT_FILENO, "\ncommandStr.type: ", sizeof("\ncommandStr.type: "));
-	write(STDOUT_FILENO, commandStr.type, strlen(commandStr.type));
-
-	write(STDOUT_FILENO, "\ncommandStr.command: ", sizeof("\ncommandStr.command: "));
-	write(STDOUT_FILENO, commandStr.command, strlen(commandStr.command));
-
-	if (!strstr(commandStr.command, "LIST")){
-		write(STDOUT_FILENO, "\ncommandStr.key: ", sizeof("\ncommandStr.key: "));
-		write(STDOUT_FILENO, commandStr.key, strlen(commandStr.key));
-
-		if (!strstr(commandStr.command, "SEARCH")){
-			write(STDOUT_FILENO, "\ncommandStr.value: ", sizeof("\ncommandStr.value: "));
-			write(STDOUT_FILENO, commandStr.value, strlen(commandStr.value));
-		}
-	}
-	write(STDOUT_FILENO, "\n\n", sizeof("\n\n"));
 }
 
 //ANCHOR intToString
