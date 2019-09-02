@@ -34,7 +34,7 @@ enum functions {
 //nodo della lista di elementi da memorizzare in locale
 struct Node {
 	int key;
-	int value;
+	long value;
 	struct Node* next;
 };
 
@@ -47,7 +47,7 @@ struct CommandStructure {
 	char *value;
 	char *command;
 	char *message;
-	char *resoult;
+	char *result;
 };
 
 //lista dei server letta da config.txt
@@ -77,18 +77,17 @@ void createConnection();//crea le connessioni con gli altri server
 void *connectionToServer(void *);//apre le connesisoni
 void *acceptConnection(void *);//accetta le connesisoni
 char *readFromPeer(int); //ritorna il messaggio letto dal socket
-struct Node* storeLocal(struct Node*, int, int); //memorizza in locale i dati inviati tramite comando store
+struct Node* storeLocal(struct Node*, int, long); //memorizza in locale i dati inviati tramite comando store
 char *printList(struct Node*);//stampa la lista locale 
 struct Node* searchLocal(struct Node*, int);//ricerca locale dei dati richiesti
-struct Node* initList(int, int);//inizializza la lista di dati locali
+struct Node* initList(int, long);//inizializza la lista di dati locali
 enum functions getInvokedCommand(char*);//restituisce il tipo di comando inviato
 void handler (int);//handler per i segnali
 void runServer(int);//apre il socket in ricezione e apre un thread per ogni connessione accettata
-int store(int, int);//funzione di store
-char *intToString(int);//conversione intero a stringa
+int store(int, long);//funzione di store
 int executeCommands(struct CommandStructure, int);//esegue il comando arrivato dal client/server
 struct CommandStructure getCommandStructure (char *);//scompone il messaggio nelle sue parti
-struct Node* corrupt(int, int);//esegue la funzione di corrupt
+struct Node* corrupt(int, long);//esegue la funzione di corrupt
 int forwardMessage(struct CommandStructure, char *);//forward ai server
 void *forwardToServers(void *);//funzione per il thread che invia il messaggio ai vari server
 int checkForwardResult(struct ForwardList *, char *);//controlla i risultati del forward
@@ -272,17 +271,11 @@ void runServer(int port){
 			write(STDOUT_FILENO, "Accettata\n", sizeof("accettata\n"));
 			int add = getpeername(socketDescriptor, (struct sockaddr *)&claddress, &dimaddcl);
 			strcpy (addressString, inet_ntoa(claddress.sin_addr));
-			write(STDOUT_FILENO, "Connessione accettata da: ", sizeof("connessione accettata da:"));
-			write(STDOUT_FILENO, addressString, strlen(addressString));
-			write(STDOUT_FILENO, ":", sizeof(":"));
-			sprintf(addressString, "%d", ntohs(claddress.sin_port));
-			write(STDOUT_FILENO, addressString, strlen(addressString));
+			write(STDOUT_FILENO, "Connessione accettata", sizeof("connessione accettata"));
 			write(STDOUT_FILENO, "\n", sizeof("\n"));
 
 			if(pthread_create(&threadId, NULL, acceptConnection, &socketDescriptor) != 0){//crea un thread
-					perror("errore thread");
-			} else {
-				//pthread_join(threadId, NULL);
+				perror("errore thread");
 			}
 		}
 	}
@@ -324,6 +317,7 @@ char * readFromPeer(int socketDescriptor){
 	free(buffer);
 	return messaggio;
 }
+
 //ANCHOR acceptConnection
 //accetta le connessioni in attesa
 void *acceptConnection(void *arg){
@@ -360,9 +354,9 @@ void *acceptConnection(void *arg){
 }
 
 //invia la risposta in base al risultato del forward, se c'è stato
-void sendResponse(char* response, int socketDescriptor, int resoult){
+void sendResponse(char* response, int socketDescriptor, int result){
 	char * messaggio = (char *) malloc (BUFFSIZE *sizeof(char));
-	if (resoult == 1){
+	if (result == 1){
 		write(STDOUT_FILENO, "Invio risposta...\n", sizeof("invio risposta...\n"));
 		//calcolo della dimensione del messaggio
 		sprintf(messaggio, "%ld", strlen(response)); //salvo la dimensione del restante messaggio in una stringa
@@ -383,7 +377,7 @@ void sendResponse(char* response, int socketDescriptor, int resoult){
 //ANCHOR executeCommands
 int executeCommands(struct CommandStructure command, int socketDescriptor){
 	int isSuccessInt = 0;//per controllare il risultato del comando
-	int resoult = 1;//per controllare il risultato del forward
+	int result = 1;//per controllare il risultato del forward
 	char *response = (char *) malloc (BUFFSIZE *sizeof(char)); 
 	struct Node* node;
 
@@ -396,12 +390,12 @@ int executeCommands(struct CommandStructure command, int socketDescriptor){
 	//in base al tipo di comando ricevuto
 	switch (getInvokedCommand(command.command)) {
 		case STORE:
-			isSuccessInt = store(atoi(command.key), atoi(command.value));
+			isSuccessInt = store(atoi(command.key), atol(command.value));
 			if (isSuccessInt == 1) {//in caso di successo
 				strcat(response, "success:");
 				strcat(response, "Successfully stored");
 				if (strcmp(command.sender, "c") == 0){//se la richiesta viene da un client
-					resoult = forwardMessage(command, response);//inoltra il comando
+					result = forwardMessage(command, response);//inoltra il comando
 				}
 			}else{
 				//concatena l'errore
@@ -420,15 +414,18 @@ int executeCommands(struct CommandStructure command, int socketDescriptor){
 			if(node != NULL) {//se è trovato
 				//concatena i dati alla risposta
 				strcat(response, "success:");
-				char* key = intToString(node->key);
-				char* value = intToString(node->value);
+				char *value =  (char *) malloc(sizeof(char) * 50);
+				char *key =  (char *) malloc(sizeof(char) * 50);
+				sprintf(key, "%d", node->key);
+				sprintf(value, "%ld", node->value);
+
 				strcat(response, key);
 				strcat(response, ", ");
 				strcat(response, value);
 				free(key);
 				free(value);
 				if (strcmp(command.sender, "c") == 0){//se il comando arriva dal client lo inoltra
-					resoult = forwardMessage(command, response);
+					result = forwardMessage(command, response);
 				}
 			}else{//concatena il messaggio d'errore alla risposta
 				strcat(response, "error:");
@@ -443,7 +440,7 @@ int executeCommands(struct CommandStructure command, int socketDescriptor){
 			close(sd);
 			exit(1);
 		case CORRUPT:   
-			node = corrupt(atoi(command.key), atoi(command.value));//chiama la corrupt e ritorna il nodo
+			node = corrupt(atoi(command.key), atol(command.value));//chiama la corrupt e ritorna il nodo
 			if (node != NULL) {//in caso ci sia viene concatenato il successo
 				strcat(response, "success:");
 				strcat(response, "KEY REPLACED SUCCESSFULLY");
@@ -459,7 +456,7 @@ int executeCommands(struct CommandStructure command, int socketDescriptor){
 			break;
 	}
 	//invia la risposta
-	sendResponse(response, socketDescriptor, resoult);
+	sendResponse(response, socketDescriptor, result);
 
 	//free(response);
 	return 1;
@@ -524,7 +521,7 @@ struct CommandStructure getCommandStructure (char *buf){
 			if (counter == 4)//quarto token
 			{
 				part = strtok (NULL, ":-");
-				commandStr.resoult = part;
+				commandStr.result = part;
 
 			}else if (counter == 5)//quinto token
 			{
@@ -543,7 +540,7 @@ struct CommandStructure getCommandStructure (char *buf){
 			commandStr.key = NULL;
 			commandStr.value = NULL;
 			commandStr.message = NULL;
-			commandStr.resoult = NULL;
+			commandStr.result = NULL;
 			break;
 		}
 		 	
@@ -552,15 +549,8 @@ struct CommandStructure getCommandStructure (char *buf){
 	return commandStr;
 }
 
-//ANCHOR intToString
-char *intToString(int a){
-	char *resStr =  (char *) malloc(sizeof(char) * 20);
-	sprintf(resStr, "%d", a);
-	return resStr;
-}
-
 //ANCHOR store
-int store(int x, int y){//funzione store
+int store(int x, long y){//funzione store
 	if (isEmptyList == 1) {//se la lista è vuota
 		head = initList(x,y);//la inizializza con i nuovi valori
 		isEmptyList = 0;//setta il flag
@@ -599,7 +589,7 @@ enum functions getInvokedCommand(char* command){//ritorna il comando ricevuto
 }
 
 //ANCHOR initList
-struct Node* initList(int key, int value){//iniziaizza la lista
+struct Node* initList(int key, long value){//iniziaizza la lista
 	//alloca la testa
 	struct Node* head = NULL;
 	head = (struct Node*)malloc(sizeof(struct Node));
@@ -610,7 +600,7 @@ struct Node* initList(int key, int value){//iniziaizza la lista
 }
 
 //ANCHOR storeLocal
-struct Node* storeLocal(struct Node* nextNode, int key, int value){
+struct Node* storeLocal(struct Node* nextNode, int key, long value){
 	if(searchLocal(nextNode, key) == NULL) {//in caso il nodo non esista
 		struct Node* newNode = (struct Node*) malloc(sizeof(struct Node));//alloca il nodo
 		//valorizza il nodo
@@ -625,7 +615,7 @@ struct Node* storeLocal(struct Node* nextNode, int key, int value){
 }
 
 //ANCHOR corrupt
-struct Node* corrupt(int key, int value){
+struct Node* corrupt(int key, long value){
 	struct Node* newNode = searchLocal(head, key);//cerca il nodo
 	if(newNode != NULL) {//se esiste lo modifica
 		newNode->value = value;
@@ -646,8 +636,11 @@ char *printList(struct Node* node) {
 	}
 	while (node != NULL) {
 		//valorizza le stringhe
-		char *key = intToString(node->key);
-		char *value = intToString(node->value);
+		char *value =  (char *) malloc(sizeof(char) * 50);
+		char *key =  (char *) malloc(sizeof(char) * 50);
+		sprintf(key, "%d", node->key);
+		sprintf(value, "%ld", node->value);
+
 		//concatena al messaggio che andrà in risposta
 		strcat(list, key);
 		strcat(list, ", ");
@@ -655,6 +648,8 @@ char *printList(struct Node* node) {
 		strcat(list, "\n");
 		//avanza di nodo
 		node = node->next;
+		free(key);
+		free(value);
 	}
 	return list;//ritorna la lista di valori
 }
@@ -705,7 +700,7 @@ int forwardMessage(struct CommandStructure command, char *response){//inoltro de
 	fwdMessage.message = (char *) malloc(BUFFSIZE * sizeof(char *));
 	fwdList = (struct ForwardList *) malloc(BUFFSIZE * sizeof(struct ForwardList*));
 	currFwdList = fwdList;
-	int resoult = 1;
+	int result = 1;
 
 	write(STDOUT_FILENO, "Preparazione per l'inoltro dei messaggio\n", sizeof ("Preparazione per l'inostro dei messaggio\n"));
 	//crea il messaggio da inoltrare partendo da quello ricevuto 
@@ -759,10 +754,10 @@ int forwardMessage(struct CommandStructure command, char *response){//inoltro de
 	}
 	if (strcmp(command.command, "EXIT")!= 0){
 		//controlla il risultati
-		resoult = checkForwardResult(fwdList, command.command);
+		result = checkForwardResult(fwdList, command.command);
 	}
 	//ritorna quanto ottenuto
-	return resoult;
+	return result;
 }
 
 int checkForwardResult(struct ForwardList *forwardList, char *command){//confronta i risultati degli inoltri
@@ -774,7 +769,7 @@ int checkForwardResult(struct ForwardList *forwardList, char *command){//confron
 		firstResoult = currFwdList;
 		currFwdList = currFwdList->next;
 		while (currFwdList != NULL){//finché ci sono elementi nella lista inoltri
-			if (strcmp(currFwdList->fwd.response.resoult, "error") == 0){//se vi sono errori
+			if (strcmp(currFwdList->fwd.response.result, "error") == 0){//se vi sono errori
 				result = 0;//ritorna errore
 			} else if(strcmp(currFwdList->fwd.response.message, firstResoult->fwd.response.message) != 0){
 				//confronto tutti i risultati con quello locale, in caso di discordanze
@@ -784,7 +779,7 @@ int checkForwardResult(struct ForwardList *forwardList, char *command){//confron
 		}
 	} else {
 		while (currFwdList != NULL){//finché ci sono elementi nella lista inoltri
-			if (strcmp(currFwdList->fwd.response.resoult, "error") == 0){//se vi sono errori
+			if (strcmp(currFwdList->fwd.response.result, "error") == 0){//se vi sono errori
 				result == 0;//ritorna errore
 			}
 			currFwdList = currFwdList->next;//altrimenti avanza
