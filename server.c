@@ -14,9 +14,9 @@
 #define BUFFSIZE 128 //dimensione del buffer per i messaggi
 #define HANDSHAKE "11:s:hands" //messaggio standard di handshake
 //messaggio standard di errore inviato al client se la richiesta arriva prima della fine dello startup
-#define STARTUPNOTFINISHED "36:s:res:error:startup not finished" 
+#define STARTUPNOTFINISHED "38:s:res:error:startup non completato" 
 //messaggio standard di errore inviato in caso ci siano errori di congruenza tra dati nel forward
-#define DATANOTMATCHING "39:s:res:error:incongruenze tra dati"
+#define DATANOTMATCHING "31:s:res:error:Ledger corrotto"
 //messaggio standard di risposta in caso di inoltro della chiusura
 #define CLOSING "29:s:res:success:spegnimento"
 
@@ -393,14 +393,14 @@ int executeCommands(struct CommandStructure command, int socketDescriptor){
 			isSuccessInt = store(atoi(command.key), atol(command.value));
 			if (isSuccessInt == 1) {//in caso di successo
 				strcat(response, "success:");
-				strcat(response, "Successfully stored");
+				strcat(response, "Store avvenuto con successo");
 				if (strcmp(command.sender, "c") == 0){//se la richiesta viene da un client
 					result = forwardMessage(command, response);//inoltra il comando
 				}
 			}else{
 				//concatena l'errore
 				strcat(response, "error:");
-				strcat(response, "KEY ALREADY EXISTS");
+				strcat(response, "Chiave già esistente");
 			}
 			break;
 		case LIST:
@@ -429,7 +429,7 @@ int executeCommands(struct CommandStructure command, int socketDescriptor){
 				}
 			}else{//concatena il messaggio d'errore alla risposta
 				strcat(response, "error:");
-				strcat(response, "chiave non trovata");
+				strcat(response, "Chiave assente");
 			}
 			break;
 		case EXIT://comando in arrivo da altri server per lo spegnimento di tutto il sistema
@@ -443,16 +443,16 @@ int executeCommands(struct CommandStructure command, int socketDescriptor){
 			node = corrupt(atoi(command.key), atol(command.value));//chiama la corrupt e ritorna il nodo
 			if (node != NULL) {//in caso ci sia viene concatenato il successo
 				strcat(response, "success:");
-				strcat(response, "KEY REPLACED SUCCESSFULLY");
+				strcat(response, "Valore sostituito con successo");
 			}else{//concatena messaggio d'errore
 				strcat(response, "error:");
-				strcat(response, "KEY DOESN'T EXIST");
+				strcat(response, "La chiave non esiste");
 			}
 			break;
 			//in caso il comando non sia trovato
 		case COMMANDO_NOT_FOUND:
 			strcat(response, "error:");
-			strcat(response, "COMMAND NOT FOUND");
+			strcat(response, "Comando non trovato");
 			break;
 	}
 	//invia la risposta
@@ -631,7 +631,7 @@ char *printList(struct Node* node) {
 	char *list = (char *) malloc (1024 *sizeof(char)); 
 
 	if (node == NULL){//se il nodo non esiste
-		strcat(list, "There are no record\n");
+		strcat(list, "Non ci sono record\n");
 		return list;
 	}
 	while (node != NULL) {
