@@ -33,7 +33,7 @@ enum functions {
 
 //nodo della lista di elementi da memorizzare in locale
 struct Node {
-	int key;
+	long key;
 	long value;
 	struct Node* next;
 };
@@ -77,17 +77,17 @@ void createConnection();//crea le connessioni con gli altri server
 void *connectionToServer(void *);//apre le connesisoni
 void *acceptConnection(void *);//accetta le connesisoni
 char *readFromPeer(int); //ritorna il messaggio letto dal socket
-struct Node* storeLocal(struct Node*, int, long); //memorizza in locale i dati inviati tramite comando store
+struct Node* storeLocal(struct Node*, long, long); //memorizza in locale i dati inviati tramite comando store
 char *printList(struct Node*);//stampa la lista locale 
-struct Node* searchLocal(struct Node*, int);//ricerca locale dei dati richiesti
-struct Node* initList(int, long);//inizializza la lista di dati locali
+struct Node* searchLocal(struct Node*, long);//ricerca locale dei dati richiesti
+struct Node* initList(long, long);//inizializza la lista di dati locali
 enum functions getInvokedCommand(char*);//restituisce il tipo di comando inviato
 void handler (int);//handler per i segnali
 void runServer(int);//apre il socket in ricezione e apre un thread per ogni connessione accettata
-int store(int, long);//funzione di store
+int store(long, long);//funzione di store
 int executeCommands(struct CommandStructure, int);//esegue il comando arrivato dal client/server
 struct CommandStructure getCommandStructure (char *);//scompone il messaggio nelle sue parti
-struct Node* corrupt(int, long);//esegue la funzione di corrupt
+struct Node* corrupt(long, long);//esegue la funzione di corrupt
 int forwardMessage(struct CommandStructure, char *);//forward ai server
 void *forwardToServers(void *);//funzione per il thread che invia il messaggio ai vari server
 int checkForwardResult(struct ForwardList *, char *);//controlla i risultati del forward
@@ -390,7 +390,7 @@ int executeCommands(struct CommandStructure command, int socketDescriptor){
 	//in base al tipo di comando ricevuto
 	switch (getInvokedCommand(command.command)) {
 		case STORE:
-			isSuccessInt = store(atoi(command.key), atol(command.value));
+			isSuccessInt = store(atol(command.key), atol(command.value));
 			if (isSuccessInt == 1) {//in caso di successo
 				strcat(response, "success:");
 				strcat(response, "Store avvenuto con successo");
@@ -410,13 +410,13 @@ int executeCommands(struct CommandStructure command, int socketDescriptor){
 			free(list);
 			break;
 		case SEARCH:
-			node = searchLocal(head, atoi(command.key));//ritorna il nodo cercato, se esiste
+			node = searchLocal(head, atol(command.key));//ritorna il nodo cercato, se esiste
 			if(node != NULL) {//se è trovato
 				//concatena i dati alla risposta
 				strcat(response, "success:");
 				char *value =  (char *) malloc(sizeof(char) * 50);
 				char *key =  (char *) malloc(sizeof(char) * 50);
-				sprintf(key, "%d", node->key);
+				sprintf(key, "%ld", node->key);
 				sprintf(value, "%ld", node->value);
 
 				strcat(response, key);
@@ -440,7 +440,7 @@ int executeCommands(struct CommandStructure command, int socketDescriptor){
 			close(sd);
 			exit(1);
 		case CORRUPT:   
-			node = corrupt(atoi(command.key), atol(command.value));//chiama la corrupt e ritorna il nodo
+			node = corrupt(atol(command.key), atol(command.value));//chiama la corrupt e ritorna il nodo
 			if (node != NULL) {//in caso ci sia viene concatenato il successo
 				strcat(response, "success:");
 				strcat(response, "Valore sostituito con successo");
@@ -550,7 +550,7 @@ struct CommandStructure getCommandStructure (char *buf){
 }
 
 //ANCHOR store
-int store(int x, long y){//funzione store
+int store(long x, long y){//funzione store
 	if (isEmptyList == 1) {//se la lista è vuota
 		head = initList(x,y);//la inizializza con i nuovi valori
 		isEmptyList = 0;//setta il flag
@@ -589,7 +589,7 @@ enum functions getInvokedCommand(char* command){//ritorna il comando ricevuto
 }
 
 //ANCHOR initList
-struct Node* initList(int key, long value){//iniziaizza la lista
+struct Node* initList(long key, long value){//iniziaizza la lista
 	//alloca la testa
 	struct Node* head = NULL;
 	head = (struct Node*)malloc(sizeof(struct Node));
@@ -600,7 +600,7 @@ struct Node* initList(int key, long value){//iniziaizza la lista
 }
 
 //ANCHOR storeLocal
-struct Node* storeLocal(struct Node* nextNode, int key, long value){
+struct Node* storeLocal(struct Node* nextNode, long key, long value){
 	if(searchLocal(nextNode, key) == NULL) {//in caso il nodo non esista
 		struct Node* newNode = (struct Node*) malloc(sizeof(struct Node));//alloca il nodo
 		//valorizza il nodo
@@ -615,7 +615,7 @@ struct Node* storeLocal(struct Node* nextNode, int key, long value){
 }
 
 //ANCHOR corrupt
-struct Node* corrupt(int key, long value){
+struct Node* corrupt(long key, long value){
 	struct Node* newNode = searchLocal(head, key);//cerca il nodo
 	if(newNode != NULL) {//se esiste lo modifica
 		newNode->value = value;
@@ -638,7 +638,7 @@ char *printList(struct Node* node) {
 		//valorizza le stringhe
 		char *value =  (char *) malloc(sizeof(char) * 50);
 		char *key =  (char *) malloc(sizeof(char) * 50);
-		sprintf(key, "%d", node->key);
+		sprintf(key, "%ld", node->key);
 		sprintf(value, "%ld", node->value);
 
 		//concatena al messaggio che andrà in risposta
@@ -655,7 +655,7 @@ char *printList(struct Node* node) {
 }
 
 //ANCHOR searchLocal
-struct Node* searchLocal(struct Node* head, int key){//ricerca locale
+struct Node* searchLocal(struct Node* head, long key){//ricerca locale
 	struct Node* cursor = head;
 	
 	//finché il cursore non è nullo
