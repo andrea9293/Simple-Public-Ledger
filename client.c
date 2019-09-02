@@ -27,7 +27,7 @@ struct ResponseStructure {
 	char *sender;
 	char *type;
 	char *message;
-	char *resoult;
+	char *result;
 };
 
 int main(int argc, const char* argv[]){
@@ -215,7 +215,7 @@ void printMessage(char *response){//stampa del messaggio ricevuto
         else if (counter == 4)
         {
             part = strtok (NULL, ":-");
-            responseStruct.resoult = part;
+            responseStruct.result = part;
 
         }else if (counter == 5)
         {
@@ -230,7 +230,7 @@ void printMessage(char *response){//stampa del messaggio ricevuto
     //stampa del risultato e del messaggio
     system("clear");
     write(STDOUT_FILENO, "\nRisposta: \n", sizeof("\nRisposta: \n"));
-    write(STDOUT_FILENO, responseStruct.resoult, strlen(responseStruct.resoult));   
+    write(STDOUT_FILENO, responseStruct.result, strlen(responseStruct.result));   
     write(STDOUT_FILENO, ": ", sizeof(": "));
     write(STDOUT_FILENO, responseStruct.message, strlen(responseStruct.message));
 }
