@@ -1,0 +1,23 @@
+richieste dal client
+<size>:<sender>:<type>:<command-par1-par2>
+sender sarà sempre c
+type sarà sempre req
+
+richieste dal server
+<size>:<sender>:<type>:<command-par1-par2>
+sender sarà sempre s
+type sarà sempre req
+
+risposte dal server
+<size>:<sender>:<type>:<result>-<messge>
+sender sarà sempre s
+type sarà sempre res
+result servirà per identificare il tipo di risultato(success, error o list in caso di lista)
+message sarà quello mostrato all'utente
+
+Handshake
+<size>:<sender>:<type>
+sender sarà s, per l'handshake in startup
+type sarà hands
+
+
